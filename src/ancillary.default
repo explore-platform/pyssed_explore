@@ -39,7 +39,7 @@
 # Server	Name	TableID	ObjID	ColumnID	UncertaintyID	ParameterID	Units	Multiplier	Epoch	BeamSize	XMatchCone	Priority
 Vizier	Gaia	I/355/gaiadr3	Source	Plx	e_Plx	Parallax	mas	1.	2016.0	1.0	0.3	10
 Vizier	Hipparcos	I/311/hip2	HIP	Plx	e_Plx	Parallax	mas	1.	1991.25	1.0	1.0	9
-Vizier	BailerJones	I/352/gedr3dis	Source	rgeo	B_rgeo/b_rgeo	Distance	pc	1.	2016.0	1.0	0.3	9
+#Vizier	BailerJones	I/352/gedr3dis	Source	rgeo	B_rgeo/b_rgeo	Distance	pc	1.	2016.0	1.0	0.3	9
 Vizier	GaiaApsis	I/355/paramp	Source	Teff	500.	Tspec	K	1.	2016.5	1.0	1.0	9
 Vizier	GaiaApsis	I/355/paramp	Source	logg	1.0	logg	dex	1.	2016.5	1.0	1.0	9
 Vizier	GaiaApsis	I/355/paramp	Source	__Fe_H_	0.5	FeH	dex	1.	2016.5	1.0	1.0	9

@@ -9,7 +9,7 @@
 # * File should be tab-separated. The first line should start with "#" and contain the column headings.
 #   Column headings must include "RA" and "Dec"
 # Server	Name	TableID	ObjCol	Epoch	BeamSize	XMatchCone
-Vizier	Gaia	I/355/gaiadr3	Source	2016.0	0.5	0.4
+Vizier	Gaia	I/350/gaiaedr3	Source	2016.0	0.5	0.4
 Vizier	Hipparcos	I/311/hip2	HIP	1991.25	1.0	1.0
 Vizier	Tycho	I/239/tyc_main	TYC	1991.25	1.0	1.0
 Vizier	PanStarrs	II/349/ps1	objID	2011.9	0.5	0.5

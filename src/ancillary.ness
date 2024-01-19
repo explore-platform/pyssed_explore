@@ -13,8 +13,7 @@
 # XMatchCone = positional accuracy in catalogue (cone cross-matching radius in ")
 # Priority = increase priority for selection as final value (integer) [****]
 # * File should be tab-separated and contain the column headings "RA" and "Dec"
-# ** Colons (:) in parameters can be used to denote upper/lower errors using two parameters
-#			Slashes (/) similarly denote upper/lower confidence bounds
+# ** Slashes (/) in parameters can be used to denote upper/lower limits using two parameters
 #			However, note that these will be merged into a single error by the programme
 # *** Special parameters:
 #			RA, Dec (extracted from input catalogue)
@@ -36,16 +35,15 @@
 # Server	Name	TableID	ObjID	ColumnID	UncertaintyID	ParameterID	Units	Multiplier	Epoch	BeamSize	XMatchCone	Priority
 Vizier	Gaia	I/355/gaiadr3	Source	Plx	e_Plx	Parallax	mas	1.	2016.0	1.0	0.3	10
 Vizier	Hipparcos	I/311/hip2	HIP	Plx	e_Plx	Parallax	mas	1.	1991.25	1.0	1.0	9
-Vizier	BailerJones	I/352/gedr3dis	Source	rgeo	B_rgeo:b_rgeo	Distance	pc	1.	2016.0	1.0	0.3	9
+Vizier	BailerJones	I/352/gedr3dis	Source	rgeo	B_rgeo/b_rgeo	Distance	pc	1.	2016.0	1.0	0.3	9
 Vizier	Ammons2006	V/136/tycall	None	Dist	E_Dist	Distance	pc	1.	2000.0	1.0	1.0	12
-Vizier	Zari2021	J/A+A/650/A112/target	None	d50kin	d84kin:d16kin	Distance	pc	1000.	2000.0	1.0	1.0	12
+Vizier	Zari2021	J/A+A/650/A112/target	None	d50kin	d84kin/d16kin	Distance	pc	1000.	2000.0	1.0	1.0	12
 Vizier	Mege2021	J/A+A/646/A74	None	Dist	e_Dist	Distance	pc	1000.	2000.0	1.0	1.0	11
 Vizier	Fresneau2007	J/A+A/469/1221/sogs	None	plx	e_plx	Parallax	mas	1.	2000.0	1.0	1.0	12
 Vizier	VIRAC	II/364/tableb1	None	Plx	e_Plx	Parallax	mas	1.	2000.0	1.0	1.0	11
-Vizier	Queiroz2020	J/A+A/638/A76	None	Dist50	Dist16:Dist84	Distance	pc	1000.	2016.5	1.0	1.0	13
+Vizier	Queiroz2020	J/A+A/638/A76	None	Dist50	Dist16/Dist84	Distance	pc	1000.	2016.5	1.0	1.0	13
 File	GRAMS	../data/grams_distance_inputs.dat	IRAS	d	err	Distance	pc	1.	2016.5	1.0	30.0	9
 File	PLDist	../data/ness-p-l-distances.dat	IRASPSC	PLD	PLDErr	Distance	pc	1.	2016.5	1.0	30.0	9
-Vizier	DEATHSTAR2	J/A+A/667/A74/catalog	Name	rmed	e_rmed/E_rmed	Distance	pc	1.	2016.5	1.0	30.0	8
 #
 # PROPER MOTION
 # Parameter = PMRA, units = mas/yr
@@ -76,7 +74,7 @@ Vizier	VIRAC	II/364/tableb1	None	pmDE	e_PMDE	PMDec	mas/yr	1.	2000.0	1.0	1.0	11
 # Server	Name	TableID	ObjID	ColumnID	UncertaintyID	ParameterID	Units	Multiplier	Epoch	BeamSize	XMatchCone	Priority
 #Vizier	Bai2020	J/AJ/159/84/table2	E(BP-RP)	e_E(BP-RP)	EB_V	0.668	2015.5	1.0	0.3	12
 Vizier	HI4PI	J/A+A/594/A116/nhi_hpx	None	NHI	None	HIcol	cm^-2	1.	2000.0	1.0	1.0	9
-#Vizier	Gaia	I/355/paramp	None	E_BP-RP_	B_E_BP-RP_:b_E_BP-RP_	EBP_RP	mag	1.	2016.5	1.0	1.0	9 # Contains error
+#Vizier	Gaia	I/355/paramp	None	E_BP-RP_	B_E_BP-RP_/b_E_BP-RP_	EBP_RP	mag	1.	2016.5	1.0	1.0	9 # Contains error
 Vizier	Queiroz2020	J/A+A/638/A76	None	AV50	AV16/AV84	AV	mag	1.	2016.5	1.0	1.0	12
 #
 # PULSATION INFORMATION

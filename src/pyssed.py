@@ -33,13 +33,6 @@ try:
     tracemalloc.start()
     if (speedtest):
         print ("sys:",datetime.now()-starttime,"s")
-    # Astroquery takes a long time - do this first
-    from astroquery.simbad import Simbad        # Allow SIMBAD queries
-    from astroquery.vizier import Vizier        # Allow VizieR queries
-    from astroquery.gaia import Gaia            # Allow Gaia queries
-    Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
-    if (speedtest):
-        print ("astroquery:",datetime.now()-starttime,"s")
     import numpy as np                          # Required for numerical processing
     import numpy.lib.recfunctions as rfn        # [For consistency with Visualiser]
     if (speedtest):
@@ -54,7 +47,6 @@ try:
     from astropy.coordinates import match_coordinates_sky    # Required for cross-matching
     from astropy.coordinates import SkyCoord    # Required for astroquery and B1950->J2000
     from astropy.coordinates import FK5         # Required B1950->J2000 conversion
-    from astropy.coordinates import Angle       # Required for sexagesimal conversion
     from astropy.io import votable              # Required for SVO interface
     from astropy.table import Table             # Used to load backup data
     if (speedtest):
@@ -62,16 +54,23 @@ try:
     import matplotlib.pyplot as plt             # Required for plotting
     from matplotlib.colors import ListedColormap # Required for colour mapping
     from mpl_toolkits.axes_grid1.inset_locator import inset_axes # Reqd. for subplots
+    import csv                                  # Required for Visualiser output
     if (speedtest):
         print ("matplotlib:",datetime.now()-starttime,"s")
 
     import wget                                 # Required to download SVO filter files
     if (speedtest):
         print ("wget:",datetime.now()-starttime,"s")
+    from astroquery.simbad import Simbad        # Allow SIMBAD queries
+    from astroquery.vizier import Vizier        # Allow VizieR queries
+    from astroquery.gaia import Gaia            # Allow Gaia queries
+    Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
+    if (speedtest):
+        print ("astroquery:",datetime.now()-starttime,"s")
 
     import itertools                            # Required for iterating model data
     if (speedtest):
-        print ("itertools:",datetime.now()-starttime,"s")
+        print ("itetools:",datetime.now()-starttime,"s")
     import pandas as pd                         # Required for model data interpolation
     if (speedtest):
         print ("pandas:",datetime.now()-starttime,"s")
@@ -107,8 +106,6 @@ except:
 
 if (speedtest):
     print ("Initialisation took:",datetime.now()-starttime,"s")
-    
-#exit()
     
 # =============================================================================
 # COLOUR MESSAGE PRINTING
@@ -356,55 +353,13 @@ def get_model_grid():
     recastmodels=int(pyssedsetupdata[pyssedsetupdata[:,0]=="RecomputeModelGrid",1])
     if (recastmodels):
         get_model_list()
-
-    modelcode=np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelCode",1])[2:-2]
     
-    modelfile="model-"+modelcode+"-recast.dat"
+    modelfile="model-"+np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelCode",1])[2:-2]+"-recast.dat"
     if (verbosity>=30):
         print ("Using model file:", modelfile)
-    #modeldata = np.genfromtxt(modelfile, comments="#", names=True, deletechars=" ~!@#$%^&*()=+~\|]}[{';: ?>,<")
-    # Although this loads the data twice, it's much quicker than using np.genfromtxt!
-    df = pd.read_csv(modelfile,dtype=float,delimiter=" ")
-    modeldata = np.array(pd.read_csv(modelfile,dtype=float,delimiter=" ").to_records(index=False))
-    modeldata.dtype.names=df.columns
-    
+    modeldata = np.genfromtxt(modelfile, comments="#", names=True, deletechars=" ~!@#$%^&*()=+~\|]}[{';: ?>,<")
+
     return modeldata
-    
-# -----------------------------------------------------------------------------
-def get_av_grid():
-    # Load extinction grids, like get_model_grid
-
-    if (verbosity>=30):
-        print ("Loading extinction grids...")
-    # No need to recast models since already run get_model_grid
-
-    modelcode=np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelCode",1])[2:-2]
-
-    avfile="alambda-"+modelcode+"-lo-recast.dat"
-    df = pd.read_csv(avfile,dtype=float,delimiter=" ")
-    avgrid0 = np.array(pd.read_csv(avfile,dtype=float,delimiter=" ").to_records(index=False))
-    avgrid0.dtype.names=df.columns
-    avgrid = np.expand_dims(avgrid0,0)
-
-    avfile="alambda-"+modelcode+"-med-recast.dat"
-    df = pd.read_csv(avfile,dtype=float,delimiter=" ")
-    avgrid1 = np.array(pd.read_csv(avfile,dtype=float,delimiter=" ").to_records(index=False))
-    avgrid1.dtype.names=df.columns
-    avgrid = np.append(avgrid,np.expand_dims(avgrid1,0),axis=0)
-
-    avfile="alambda-"+modelcode+"-hi-recast.dat"
-    df = pd.read_csv(avfile,dtype=float,delimiter=" ")
-    avgrid2 = np.array(pd.read_csv(avfile,dtype=float,delimiter=" ").to_records(index=False))
-    avgrid2.dtype.names=df.columns
-    avgrid = np.append(avgrid,np.expand_dims(avgrid2,0),axis=0)
-
-    avfile="alambda-"+modelcode+"-vhi-recast.dat"
-    df = pd.read_csv(avfile,dtype=float,delimiter=" ")
-    avgrid3 = np.array(pd.read_csv(avfile,dtype=float,delimiter=" ").to_records(index=False))
-    avgrid3.dtype.names=df.columns
-    avgrid = np.append(avgrid,np.expand_dims(avgrid3,0),axis=0)
-
-    return avgrid
 
 # -----------------------------------------------------------------------------
 def get_model_list():
@@ -417,121 +372,101 @@ def get_model_list():
         print ("Have a coffee break - this may take some time (est. a fraction of an hour per filter).")
         print ("If this takes too long, try restricting the Model*Hi and Model*Lo parameters in the setup file.")
 
-    # Load list of reduced models and extinction data
-    # List of filenames should match those generated in makemodel.py
-    modelcode=np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelCode",1])[2:-2]
-    nfiles=5
-    modelfiles=np.empty(nfiles,dtype=object)
-    recastmodelfiles=np.empty(nfiles,dtype=object)
-    modelfiles[0]="model-"+modelcode+".dat"
-    recastmodelfiles[0]="model-"+modelcode+"-recast.dat"
-    modelfiles[1]="alambda-"+modelcode+"-lo.dat"
-    recastmodelfiles[1]="alambda-"+modelcode+"-lo-recast.dat"
-    modelfiles[2]="alambda-"+modelcode+"-med.dat"
-    recastmodelfiles[2]="alambda-"+modelcode+"-med-recast.dat"
-    modelfiles[3]="alambda-"+modelcode+"-hi.dat"
-    recastmodelfiles[3]="alambda-"+modelcode+"-hi-recast.dat"
-    modelfiles[4]="alambda-"+modelcode+"-vhi.dat"
-    recastmodelfiles[4]="alambda-"+modelcode+"-vhi-recast.dat"
+    # Load list of reduced models
+    modelfile="model-"+np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelCode",1])[2:-2]+".dat"
+    if (verbosity>=30):
+        print ("Using model file:", modelfile)
+    modelfiledata = np.genfromtxt(modelfile, comments="#", names=True, deletechars=" ~!@#$%^&*()=+~\|]}[{';: ?>,<")
 
+    # Remove outlying models
+    modeltefflo=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelTeffLo",1])
+    modelteffhi=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelTeffHi",1])
+    modellogglo=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelLoggLo",1])
+    modellogghi=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelLoggHi",1])
+    modelfehlo=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelFeHLo",1])
+    modelfehhi=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelFeHHi",1])
+    modelafelo=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelAFeLo",1])
+    modelafehi=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelAFeHi",1])
+    modelfiledata = modelfiledata[(modelfiledata['teff']>=modeltefflo) & (modelfiledata['teff']<=modelteffhi)]
+    modelfiledata = modelfiledata[(modelfiledata['logg']>=modellogglo) & (modelfiledata['logg']<=modellogghi)]
+    modelfiledata = modelfiledata[(modelfiledata['metal']>=modelfehlo) & (modelfiledata['metal']<=modelfehhi)]
+    modelfiledata = modelfiledata[(modelfiledata['alpha']>=modelafelo) & (modelfiledata['alpha']<=modelafehi)]
+
+    # Separate parameters and values
+    params=np.stack((modelfiledata['teff'],modelfiledata['logg'],modelfiledata['metal'],modelfiledata['alpha']),axis=1)
+    valueselector = modelfiledata.dtype.names[4:]
+
+    # Iterate parameters onto complete grid
+    interp_grid_points = np.array(list(itertools.product(np.unique(modelfiledata['teff']),np.unique(modelfiledata['logg']),np.unique(modelfiledata['metal']),np.unique(modelfiledata['alpha']))))
+    if (verbosity>=90):
+        print ("Original grid contains",len(modelfiledata),"points")
+        print ("Complete grid will contain",len(interp_grid_points),"points")
+    
+    # Set up output data grid
+    interp_data_points = np.zeros((len(interp_grid_points[:,0]),len(valueselector)),dtype=float)
+    #print (np.shape(interp_data_points))
+    
+    # Rescale temperature axis but set rescale=False in interpfn
+    # This allows temperature to mostly control the flux, but gives more appropriate weight to log g, [Fe/H] and [alpha/Fe]
+    rescaled_params = np.copy(params)
+    rescaled_params[:,0]/=100.
+    rescaled_grid_points = np.copy(interp_grid_points)
+    rescaled_grid_points[:,0]/=100.
+    
     try:
         start = datetime.now() # time object
     except:
         start = 0
-    
-    for k in np.arange(nfiles):
-        modelfile=modelfiles[k]
-        recastmodelfile=recastmodelfiles[k]
-        if (verbosity>=10):
-            print ("File",k+1,"of",nfiles,": recasting",modelfile,"to",recastmodelfile)
-    
-        modelfiledata = np.genfromtxt(modelfile, comments="#", names=True, deletechars=" ~!@#$%^&*()=+~\|]}[{';: ?>,<")
-
-        # Remove outlying models
-        modeltefflo=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelTeffLo",1])
-        modelteffhi=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelTeffHi",1])
-        modellogglo=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelLoggLo",1])
-        modellogghi=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelLoggHi",1])
-        modelfehlo=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelFeHLo",1])
-        modelfehhi=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelFeHHi",1])
-        modelafelo=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelAFeLo",1])
-        modelafehi=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelAFeHi",1])
-        modelfiledata = modelfiledata[(modelfiledata['teff']>=modeltefflo) & (modelfiledata['teff']<=modelteffhi)]
-        modelfiledata = modelfiledata[(modelfiledata['logg']>=modellogglo) & (modelfiledata['logg']<=modellogghi)]
-        modelfiledata = modelfiledata[(modelfiledata['metal']>=modelfehlo) & (modelfiledata['metal']<=modelfehhi)]
-        modelfiledata = modelfiledata[(modelfiledata['alpha']>=modelafelo) & (modelfiledata['alpha']<=modelafehi)]
-
-        # Separate parameters and values
-        params=np.stack((modelfiledata['teff'],modelfiledata['logg'],modelfiledata['metal'],modelfiledata['alpha']),axis=1)
-        valueselector = modelfiledata.dtype.names[4:]
-
-        # Iterate parameters onto complete grid
-        interp_grid_points = np.array(list(itertools.product(np.unique(modelfiledata['teff']),np.unique(modelfiledata['logg']),np.unique(modelfiledata['metal']),np.unique(modelfiledata['alpha']))))
-        if (verbosity>=90):
-            print ("Original grid contains",len(modelfiledata),"points")
-            print ("Complete grid will contain",len(interp_grid_points),"points")
-
-        # Set up output data grid
-        interp_data_points = np.zeros((len(interp_grid_points[:,0]),len(valueselector)),dtype=float)
-        #print (np.shape(interp_data_points))
-        
-        # Rescale temperature axis but set rescale=False in interpfn
-        # This allows temperature to mostly control the flux, but gives more appropriate weight to log g, [Fe/H] and [alpha/Fe]
-        rescaled_params = np.copy(params)
-        rescaled_params[:,0]/=100.
-        rescaled_grid_points = np.copy(interp_grid_points)
-        rescaled_grid_points[:,0]/=100.
-    
-        # Recast onto rectilinear grid
-        for i in np.arange(len(valueselector)): # loop over filters
-            if (verbosity>=30):
-                try: # fails if datetime not imported or i=0
-                    #ftotal=nfiles*len(valueselector)
-                    fremaining=(nfiles-k-1)*len(valueselector)+(len(valueselector)-i)
-                    fdone=k*len(valueselector)+i
-                    now=datetime.now()
-                    elapsed=((now-start).seconds+(now-start).microseconds/1000000.)
-                    remaining=elapsed/(fdone+1e-6)*fremaining
-#                    eta=(len(valueselector)-i)*(now-start)/(i+1e-6)+datetime.now()
-                    eta=datetime.now()+(now-start)/(fdone+1e-6)*fremaining
-                except:
-                    now = 0; elapsed = 0; remaining = 0
-                print ("File",k+1,"of",nfiles,", filter", i+1, "of", len(valueselector), "[",now,"], elapsed:",int(elapsed)," ETA:",eta)
-
-            ts=np.unique(modelfiledata['teff'])
-            nts=len(ts)
-            for j in np.arange(nts):
-                mint = np.where(j-3<0,0,j-3)
-#                if (ts[j]<3500):
-#                    maxt = np.where(j+10>=nts,nts-1,j+10)
-                if (ts[j]<3000):
-                    maxt = np.where(j+8>=nts,nts-1,j+8)
-                else:
-                    maxt = np.where(j+3>=nts,nts-1,j+3)
-                if (verbosity>=80):
-                    print (ts[j])
-                snip_params=params[(params[:,0]>=ts[mint]) & (params[:,0]<=ts[maxt])]
-                snip_values=modelfiledata[(params[:,0]>=ts[mint]) & (params[:,0]<=ts[maxt])][list(valueselector)[i]]
-                if (k==0): # for models
-                    interpfn = interpolate.LinearNDInterpolator(snip_params,snip_values,rescale=True, fill_value=0.)
-                else: # for Alambda/Av (quicker and need non-zero fill_value)
-                    interpfn = interpolate.NearestNDInterpolator(snip_params,snip_values,rescale=True)
-                #interpfn = interpolate.LinearNDInterpolator(snip_params,snip_values,rescale=True) # fill nan
-                modeldata = interpfn(interp_grid_points[interp_grid_points[:,0]==ts[j]])
-                interp_data_points[interp_grid_points[:,0]==ts[j],i]=np.squeeze(modeldata)
-            
+    # Recast onto rectilinear grid
+    for i in np.arange(len(valueselector)): # loop over filters
         if (verbosity>=30):
-            print ("Done. Saving recast model file.")
-        with open(modelfile, "r") as f:
-            header=f.readline()
-        with open(recastmodelfile, "w") as f:
-            f.write(header)
-        with open(recastmodelfile, "a") as f:
-            np.savetxt(f,np.append(interp_grid_points,interp_data_points,axis=1), fmt='%s', delimiter=' ')
+            try: # fails if datetime not imported or i=0
+                now=datetime.now()
+                elapsed=((now-start).seconds+(now-start).microseconds/1000000.)
+                remaining=elapsed/(i+1e-6)*(len(valueselector)-i)
+                eta=(len(valueselector)-i)*(now-start)/(i+1e-6)+datetime.now()
+            except:
+                now = 0; elapsed = 0; remaining = 0
+            print ("Processing filter", i+1, "of", len(valueselector), "[",now,"], elapsed:",int(elapsed)," ETA:",eta)
+
+#        values=modelfiledata[:][list(valueselector)[i]]
+
+        ##interpfn = interpolate.griddata(params,values,interp_grid_points, method='linear', rescale=True, fill_value=0.) # this is the slow part!
+        ##df = pd.DataFrame(interpfn)
+        ##modeldata = df.interpolate().to_numpy()
+        #interpfn = interpolate.LinearNDInterpolator(params,values,rescale=True, fill_value=0.) # slightly faster!
+#        interpfn = interpolate.LinearNDInterpolator(rescaled_params,values,rescale=False, fill_value=0.) # slightly faster!
+#        modeldata = interpfn(rescaled_grid_points)
+
+#        interp_data_points[:,i]=np.squeeze(modeldata)
+
+        ts=np.unique(modelfiledata['teff'])
+        nts=len(ts)
+        for j in np.arange(nts):
+            mint = np.where(j-3<0,0,j-3)
+            if (ts[j]<3500):
+                maxt = np.where(j+10>=nts,nts-1,j+10)
+            else:
+                maxt = np.where(j+3>=nts,nts-1,j+3)
+            if (verbosity>=80):
+                print (ts[j])
+            snip_params=params[(params[:,0]>=ts[mint]) & (params[:,0]<=ts[maxt])]
+            snip_values=modelfiledata[(params[:,0]>=ts[mint]) & (params[:,0]<=ts[maxt])][list(valueselector)[i]]
+            interpfn = interpolate.LinearNDInterpolator(snip_params,snip_values,rescale=True, fill_value=0.)
+            modeldata = interpfn(interp_grid_points[interp_grid_points[:,0]==ts[j]])
+            interp_data_points[interp_grid_points[:,0]==ts[j],i]=np.squeeze(modeldata)
+        
+    if (verbosity>=30):
+        print ("Done. Saving recast model file.")
+    recastmodelfile="model-"+np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelCode",1])[2:-2]+"-recast.dat"
+    with open(modelfile, "r") as f:
+        header=f.readline()
+    with open(recastmodelfile, "w") as f:
+        f.write(header)
+    with open(recastmodelfile, "a") as f:
+        np.savetxt(f,np.append(interp_grid_points,interp_data_points,axis=1), fmt='%s', delimiter=' ')
     if (verbosity>=5):
         print ("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-    print ("Now run shorten-model.scr")
-    exit()
 
     return
 
@@ -822,14 +757,6 @@ def extract_ra_dec(sourcedata):
                                                 print ("Selected co-ordinates from: _RAJ2000/_DEJ2000")
                                         except:
                                             print_fail ("Failed to find a co-ordinate system")
-    # Convert sexagesimal to degrees
-    if ((newra.dtype!="float64") & (newra.dtype!="float32") & (newra.dtype!="float")):
-        if (verbosity>=99):
-            print_warn ("Converting from sexagesimal!")
-            print (newra[0],newra.dtype)
-        newra=Angle(np.char.add(newra,np.array(["hours"]))).degree
-        newdec=Angle(np.char.add(newdec,np.array(["degrees"]))).degree
-
     return newra,newdec
 
 # -----------------------------------------------------------------------------
@@ -913,40 +840,17 @@ def extract_ra_dec_pm(sourcedata):
                     if (verbosity>95):
                         print ("Trying user-specified data...")
                     sourcetype="User"
-                    # Allow different capitalisations
-                    try: # Sexagesimal
-                        try:
-                            rac=np.fromstring(sourcedata['RA'],dtype=float,sep=" ")
-                        except:
-                            try:
-                                rac=np.fromstring(sourcedata['Ra'],dtype=float,sep=" ")
-                            except:
-                                rac=np.fromstring(sourcedata['ra'],dtype=float,sep=" ")
-                        try:
-                            decc=np.fromstring(sourcedata['DEC'],dtype=float,sep=" ")
-                        except:
-                            decc=np.fromstring(sourcedata['Dec'],dtype=float,sep=" ")
-                        sourcera=rac[0]*15.+rac[1]/4+rac[2]/240
-                        sourcedec=abs(decc[0])/decc[0]*(abs(decc[0])+decc[1]/60+decc[2]/3600)
-                    except: # Decimal degrees
-                        sourcera=sourcedata['RA']
-                        sourcedec=sourcedata['Dec']
-                    length=0
-                    try:
-                        length=len(sourcera)
-                    except:
-                        pass
-                    if (length>0):
-                        zero=np.zeros(length)
-                    else:
-                        zero=0.
-                    sourceraerr=zero
-                    sourcedecerr=zero
+                    rac=np.fromstring(sourcedata['RA'],dtype=float,sep=" ")
+                    decc=np.fromstring(sourcedata['DEC'],dtype=float,sep=" ")
+                    sourcera=rac[0]*15.+rac[1]/4+rac[2]/240
+                    sourcedec=abs(decc[0])/decc[0]*(abs(decc[0])+decc[1]/60+decc[2]/3600)
+                    sourceraerr=0.
+                    sourcedecerr=0.
                     if (pmtype==0):
-                        sourcepmra=zero
-                        sourcepmdec=zero
-                        sourcepmraerr=zero
-                        sourcepmdecerr=zero
+                        sourcepmra=0.
+                        sourcepmdec=0.
+                        sourcepmraerr=0.
+                        sourcepmdecerr=0.
                     elif (pmtype==1):
                         try:
                             sourcepmra=(sourcedata[pmracol]).astype(float)
@@ -954,23 +858,19 @@ def extract_ra_dec_pm(sourcedata):
                             sourcepmraerr=(sourcedata[pmraerrcol]).astype(float)
                             sourcepmdecerr=(sourcedata[pmdecerrcol]).astype(float)
                         except KeyError:
-                            sourcepmra=zero
-                            sourcepmdec=zero
-                            sourcepmraerr=zero
-                            sourcepmdecerr=zero
+                            sourcepmra=0.
+                            sourcepmdec=0.
+                            sourcepmraerr=0.
+                            sourcepmdecerr=0.
                     else:
                         try:
-                            if (length>0):
-                                sourcepmra=np.full(length,pmra0)
-                                sourcepmdec=np.full(length,pmdec0)
-                            else:
-                                sourcepmra=pmra0
-                                sourcepmdec=pmdec0
+                            sourcepmra=pmra0
+                            sourcepmdec=pmdec0
                         except KeyError:
-                            sourcepmra=zero
-                            sourcepmdec=zero
-                        sourcepmraerr=zero
-                        sourcepmdecerr=zero
+                            sourcepmra=0.
+                            sourcepmdec=0.
+                        sourcepmraerr=0.
+                        sourcepmdecerr=0.
                     sourceepoch=2000.
                     if (verbosity>95):
                         print ("User data parsed.")
@@ -978,50 +878,26 @@ def extract_ra_dec_pm(sourcedata):
                     if (verbosity>95):
                         print ("Resorting to pre-computed ICRS co-ordinates...")
                     sourcetype="Other"
-                    try:
-                        sourcera=(sourcedata['_RAJ2000']).astype(float)
-                        sourcedec=(sourcedata['_DEJ2000']).astype(float)
-                    except:
-                        print_fail ("Failure to extract co-ordinates from data")
-                        print ("Available columns",sourcedata.dtype.names)
-                    #try: # if single object, expand array
-                    #    foo=len(sourcera)
-                    #except:
-                    #    sourcera=np.array([sourcera])
-                    #    sourcedec=np.array([sourcedec])
+                    sourcera=(sourcedata['_RAJ2000']).astype(float)
+                    sourcedec=(sourcedata['_DEJ2000']).astype(float)
                     try:
                         sourceraerr=(sourcedata['e_RAJ2000']).astype(float)/3600000.
                         sourcedecerr=(sourcedata['e_DEJ2000']).astype(float)/3600000.
                     except:
-                        try:
-                            if (len(sourcera)>0):
-                                sourceraerr=np.zeros(len(sourcera),dtype=float)
-                                sourcedecerr=np.zeros(len(sourcera),dtype=float)
-                        except:
-                            sourceraerr=0.
-                            sourcedecerr=0.
+                        sourceraerr=np.zeros(len(sourcera),dtype=float)
+                        sourcedecerr=np.zeros(len(sourcera),dtype=float)
                     try:
                         sourcepmra=(sourcedata['pmRA']).astype(float)
                         sourcepmdec=(sourcedata['pmDE']).astype(float)
                     except:
-                        try:
-                            if (len(sourcera)>0):
-                                sourcepmra=np.full(len(sourcera),pmra0,dtype=float)
-                                sourcepmdec=np.full(len(sourcera),pmdec0,dtype=float)
-                        except:
-                            sourcepmra=0.
-                            sourcepmdec=0.
+                        sourcepmra=np.zeros(len(sourcera),dtype=float)
+                        sourcepmdec=np.zeros(len(sourcera),dtype=float)
                     try:
                         sourcepmraerr=(sourcedata['e_pmRA']).astype(float)
                         sourcepmdecerr=(sourcedata['e_pmDE']).astype(float)
                     except:
-                        try:
-                            if (len(sourcera)>0):
-                                sourcepmraerr=np.zeros(len(sourcera),dtype=float)
-                                sourcepmdecerr=np.zeros(len(sourcera),dtype=float)
-                        except:
-                            sourcepmraerr=0.
-                            sourcepmdecerr=0.
+                        sourcepmraerr=np.zeros(len(sourcera),dtype=float)
+                        sourcepmdecerr=np.zeros(len(sourcera),dtype=float)
                     sourceepoch=2000.
                     if (verbosity>95):
                         print ("Other data parsed.")
@@ -1030,7 +906,7 @@ def extract_ra_dec_pm(sourcedata):
     sourcepmdec=np.nan_to_num(sourcepmdec,copy=False,nan=0.0,posinf=0.0,neginf=0.0)
     sourcepmraerr=np.nan_to_num(sourcepmraerr,copy=False,nan=0.0,posinf=0.0,neginf=0.0)
     sourcepmdecerr=np.nan_to_num(sourcepmdecerr,copy=False,nan=0.0,posinf=0.0,neginf=0.0)
-    
+
     return sourcetype,sourcera,sourcedec,sourceraerr,sourcedecerr,sourcepmra,sourcepmdec,sourcepmraerr,sourcepmdecerr,sourceepoch
 
 # -----------------------------------------------------------------------------
@@ -1091,7 +967,7 @@ def get_vizier_single(cmdparams,sourcedata):
     ancillary_queries=get_ancillary_list()
     if (np.size(ancillary_queries)==1):
             ancillary_queries=np.expand_dims(ancillary_queries,axis=0)
-    ancillary=np.zeros([np.size(ancillary_queries)+5],dtype=[('parameter',object),('catname',object),('colname',object),('value',object),('err',object),('priority',object),('mask',bool)])
+    ancillary=np.zeros([np.size(ancillary_queries)+4],dtype=[('parameter',object),('catname',object),('colname',object),('value',object),('err',object),('priority',object),('mask',bool)])
 
     try:
     #if (sourcedata.dtype=="float64"):
@@ -1325,16 +1201,7 @@ def get_vizier_single(cmdparams,sourcedata):
             except AttributeError:
                 if (verbosity>80):
                     print_warn ("Ignoring catalogue with no or bad data")
-                datalen=0
-            except TypeError:
-                if (verbosity>70):
-                    print_warn ("Bad data returned by VizieR. Retrying.")
-                try:
-                    vizier_data=query_vizier(cat=str(ancillary_queries[i]['cdstable']),ra=ra,dec=dec,r=matchr,method="cone")
-                except TypeError:
-                    print_fail ("Repeated bad data from VizieR. Aborting this entry.")
-                    print ("CATALOGUE = ",str(ancillary_queries[i]['cdstable']),"; RA,DEC =",ra,dec)
-                datalen=0
+                    datalen=0
             if (datalen>0):
                 if (verbosity>80):
                     print (vizier_data[0])
@@ -1374,16 +1241,13 @@ def get_vizier_single(cmdparams,sourcedata):
                         err=0
                     elif (isfloat(ancillary_queries[i]['errname'])):
                         err=float(ancillary_queries[i]['errname'])
-                    elif ("/" in ancillary_queries[i]['errname']): # allow upper/lower errors
+                    elif ("/" in ancillary_queries[i]['errname']): # allow upper/lower limits
                         errs=str.split(ancillary_queries[i]['errname'],sep="/")
-                        err=(vizier_data[0][errs[0]][0]+vizier_data[0][errs[1]][0])/2.
-                    elif (":" in ancillary_queries[i]['errname']): # allow upper/lower confidence limits
-                        errs=str.split(ancillary_queries[i]['errname'],sep=":")
                         err=(vizier_data[0][errs[0]][0]-vizier_data[0][errs[1]][0])/2.
                     else:
                         err=vizier_data[0][ancillary_queries[i]['errname']][0]
                     if (vizier_data[0][ancillary_queries[i]['colname']][0]!="--"):
-                        ancillary[i+5]=(ancillary_queries[i]['paramname'],ancillary_queries[i]['catname'],ancillary_queries[i]['colname'],vizier_data[0][ancillary_queries[i]['colname']][0],err,ancillary_queries[i]['priority'],mask)
+                        ancillary[i+4]=(ancillary_queries[i]['paramname'],ancillary_queries[i]['catname'],ancillary_queries[i]['colname'],vizier_data[0][ancillary_queries[i]['colname']][0],err,ancillary_queries[i]['priority'],mask)
                 except KeyError:
                     print_fail ("Key error: entry in ancillary request file does not match VizieR table")
                     print ("Query:",ancillary_queries[i])
@@ -1822,18 +1686,18 @@ def get_sed_single(cmdparams):
                 # Query Hipparcos identifier for data
                 if (verbosity>40):
                     print ("Hipparcos id:",hip)
-                attempts=0
-                while attempts < maxattempts:
-                    try:
-                        vizquery=Vizier(columns=["**"]).query_object(hip, catalog="I/311/hip2")
-                        break
-                    except:
-                        attempts += 1
-                        print_warn ("Could not connect to Vizier server (attempt "+attempts+" of "+maxattempts+") [Vizier, Hipparcos]")
-                        try: # wait for server to clear
-                            time.sleep(attempts**2)
-                        except: # if time not installed don't wait
-                            pass
+                    attempts=0
+                    while attempts < maxattempts:
+                        try:
+                            vizquery=Vizier(columns=["**"]).query_object(hip, catalog="I/311/hip2")
+                            break
+                        except:
+                            attempts += 1
+                            print_warn ("Could not connect to Vizier server (attempt "+attempts+" of "+maxattempts+") [Vizier, Hipparcos]")
+                            try: # wait for server to clear
+                                time.sleep(attempts**2)
+                            except: # if time not installed don't wait
+                                pass
                 if (attempts==maxattempts):
                     print_fail ("Could not connect to VizieR server")
                     raise Exception("Could not connect to VizieR server")
@@ -1962,7 +1826,6 @@ def merge_ancillary(ancillary):
 
     # Reject null values
     # XXX Try to look at masked elements, rather than just zero
-    # Broken in Python 3.8
     ancillary['mask']=np.where(ancillary['value'].astype(bool)==False,False,ancillary['mask'])
     
     for param in np.unique(ancillary['parameter']):
@@ -2653,7 +2516,7 @@ def compile_areaseds(seds,weights,photdata,ancs,ancweights,ancdata,ra1=0.,ra2=0.
     ancillary_queries=get_ancillary_list()
     if (np.size(ancillary_queries)==1):
             ancillary_queries=np.expand_dims(ancillary_queries,axis=0)
-    ancillary=np.zeros([np.size(ancillary_queries)+5],dtype=[('parameter',object),('catname',object),('colname',object),('value',object),('err',object),('priority',object),('mask',bool)])
+    ancillary=np.zeros([np.size(ancillary_queries)+4],dtype=[('parameter',object),('catname',object),('colname',object),('value',object),('err',object),('priority',object),('mask',bool)])
     
     # Load catalogues into memory
     catalogues=np.empty(len(orderedcats),dtype=object)
@@ -2755,8 +2618,8 @@ def compile_areaseds(seds,weights,photdata,ancs,ancweights,ancdata,ra1=0.,ra2=0.
         # Get ancillary information
         if (verbosity>=94):
             print ("Getting ancillary data of object",i+1,"of",len(seds))
-        nfsuccess=5
-        ancillary=np.zeros([np.size(ancillary_queries)+5],dtype=[('parameter',object),('catname',object),('colname',object),('value',object),('err',object),('priority',object),('mask',bool)])
+        nfsuccess=4
+        ancillary=np.zeros([np.size(ancillary_queries)+4],dtype=[('parameter',object),('catname',object),('colname',object),('value',object),('err',object),('priority',object),('mask',bool)])
         #idcol=np.empty(len(orderedanccats),dtype=object)
         #for i in np.arange(len(orderedanccats)):
         #    idcol[i]=np.squeeze(ancillary[ancillary['catname']==orderedanccats[i]]['idcol'])
@@ -2775,7 +2638,6 @@ def compile_areaseds(seds,weights,photdata,ancs,ancweights,ancdata,ra1=0.,ra2=0.
                     ancillary[1]=('Dec',sourcetype,'Dec',dec,decerr,0,True)
                     ancillary[2]=('PMRA',sourcetype,'PMRA',pmra,pmraerr,0,True)
                     ancillary[3]=('PMDec',sourcetype,'PMDec',pmdec,pmdecerr,0,True)
-                    ancillary[4]=('Dist','Adopted','Dist',0,0,0,True)
                 # Get ID
                 catid="None"
 #                if (idcol[j]=="None"):
@@ -2797,11 +2659,8 @@ def compile_areaseds(seds,weights,photdata,ancs,ancweights,ancdata,ra1=0.,ra2=0.
                         err=0
                     elif (isfloat(anc_queries[k]['errname'])):
                         err=float(anc_queries[k]['errname'])
-                    elif ("/" in anc_queries[k]['errname']): # allow upper/lower errors
+                    elif ("/" in anc_queries[k]['errname']): # allow upper/lower limits
                         errs=str.split(anc_queries[k]['errname'],sep="/")
-                        err=(data[errs[0]]+data[errs[1]])/2.
-                    elif (":" in anc_queries[k]['errname']): # allow upper/lower confidence limits
-                        errs=str.split(anc_queries[k]['errname'],sep=":")
                         err=(data[errs[0]]-data[errs[1]])/2.
                     else:
                         try:
@@ -2819,17 +2678,12 @@ def compile_areaseds(seds,weights,photdata,ancs,ancweights,ancdata,ra1=0.,ra2=0.
                         #if (data[anc_queries[k]['colname']]!="--"):
                         ancillary[nfsuccess]=(anc_queries[k]['paramname'],anc_queries[k]['catname'],anc_queries[k]['colname'],data[anc_queries[k]['colname']],err,anc_queries[k]['priority'],mask)
                         if (verbosity>=99):
-                            print (nfsuccess,ancillary[k+5])
+                            print (nfsuccess,ancillary[k+4])
                         nfsuccess+=1
                     except ValueError as e:
                         if (verbosity>95):
                             print_warn ("Warning:")
                             print (e)
-        # Get distance
-        # If distance exists, put it in slot 4
-        # If no distance exists, put empty distance in slot 4
-        ancillary[4][3]=adopt_distance(ancillary)
-
         ancillary=ancillary[ancillary['parameter']!=0]
         if (nfsuccess>=0):
             nssuccess+=1
@@ -2847,7 +2701,7 @@ def compile_areaseds(seds,weights,photdata,ancs,ancweights,ancdata,ra1=0.,ra2=0.
     #    np.save(sedsfile,compiledseds)
     #    np.save(ancfile,compiledanc)
     #    np.savetxt(sourcefile,sourcedata,delimiter="\t",fmt="%s")
-    
+        
     return compiledseds,compiledanc,sourcedata
 
 # =============================================================================
@@ -2870,13 +2724,11 @@ def get_gtomo_av(dist,ext_dist50,ext_av50):
     return av
     
 # -----------------------------------------------------------------------------
-def deredden(sed,ancillary,dist,avgrid,gtomo_ebv=-1):
-
+def deredden(sed,ancillary,dist,gtomo_ebv=-1):
 
     ebv=float(pyssedsetupdata[pyssedsetupdata[:,0]=="DefaultEBV",1])
     rv=float(pyssedsetupdata[pyssedsetupdata[:,0]=="DefaultRV",1])
     extmap=pyssedsetupdata[pyssedsetupdata[:,0]=="ExtMap",1]
-    xcdetail=int(pyssedsetupdata[pyssedsetupdata[:,0]=="ExtCorrDetail",1])
 
     if (verbosity>80):
         if (extmap == "GTomo"):
@@ -2917,18 +2769,10 @@ def deredden(sed,ancillary,dist,avgrid,gtomo_ebv=-1):
                     ebv=0
         elif (extmap == "GTomo"):
             ebv=gtomo_ebv
-
-        if (xcdetail==0):
-            wavel=np.where(sed['wavel']>=1000., sed['wavel'], 1000.) # Prevent overflowing the function
-            wavel=np.where(sed['wavel']<=33333., wavel, 33333.)    #
-            sed['dered'] = sed['flux']/ext.extinguish(wavel*u.AA, Ebv=ebv)
-            sed['derederr'] = sed['ferr']/ext.extinguish(wavel*u.AA, Ebv=ebv)
-        elif (xcdetail>0):
-            if (verbosity>80):
-                print ("Avoiding dereddening now. Detailed treatment during fitting requested.")
-            sed['dered'] = sed['flux']
-            sed['derederr'] = sed['ferr']
-
+        wavel=np.where(sed['wavel']>=1000., sed['wavel'], 1000.) # Prevent overflowing the function
+        wavel=np.where(sed['wavel']<=33333., wavel, 33333.)    #
+        sed['dered'] = sed['flux']/ext.extinguish(wavel*u.AA, Ebv=ebv)
+        sed['derederr'] = sed['ferr']/ext.extinguish(wavel*u.AA, Ebv=ebv)
     else:
         ebv=0
         sed['dered'] = sed['flux']
@@ -2977,27 +2821,18 @@ def adopt_distance(ancillary):
 
     # Convert to distance (with error floor)
     minerr=float(pyssedsetupdata[pyssedsetupdata[:,0]=="MinAncError",1])
-    # If one parallax
-    try:
-        if (plx>0.):
-            plxdist=1000./plx
-            plxdisterr=plxerr/plx*plxdist
-            plxdisterr=np.where(plxdisterr>0,plxdisterr,plxdist*minerr)
-        else:
-            plxdist=[]
-            plxdisterr=[]
-    except ValueError: # if multiple parallaxes
-        plx=plx[plx>0]
+    if (plx>0.):
         plxdist=1000./plx
         plxdisterr=plxerr/plx*plxdist
         plxdisterr=np.where(plxdisterr>0,plxdisterr,plxdist*minerr)
-    
-        
+    else:
+        plxdist=[]
+        plxdisterr=[]
 
     # Extract distances
     foo=ancillary[(ancillary['parameter']=="Distance")]
-    d=foo[(foo['mask']==True) & (foo['value']>0.)]['value']
-    derr=foo[(foo['mask']==True) & (foo['value']>0.)]['err']
+    d=foo[(foo['mask']==True)]['value']
+    derr=foo[(foo['mask']==True)]['err']
     if (verbosity > 80):
 #    print (ancillary)
 #    if (verbosity > 20):
@@ -3010,17 +2845,7 @@ def adopt_distance(ancillary):
     if ((len(d)>0) & (len(plxdist)>0)):
         dd=np.append(d,plxdist,axis=0)
         dderr=np.append(derr,plxdisterr,axis=0)
-        try:
-            dist=np.average(dd,weights=1./dderr**2)
-        except TypeError:
-            print_fail ("TypeError in adopt_distance")
-            weights=1./dderr**2
-            print (dd,d,plxdist)
-            print (dderr,derr,plxdisterr)
-            print (weights)
-            print (np.shape(dd),np.shape(weights))
-            print (ancillary)
-            exit()
+        dist=np.average(dd,weights=1./dderr**2)
         ferr=np.min(dderr/dd) # Compute minimum fractional error
     elif (len(d)>0):
         dist=np.average(d,weights=1./derr**2)
@@ -3043,16 +2868,16 @@ def adopt_distance(ancillary):
     # List distances
     if ((verbosity > 60) & (dist>0)):
         print ("Adopted distance:",dist,"pc")
-
+    
     return dist
 
     
 # =============================================================================
 # SED FITTING
 # =============================================================================
-def sed_fit_bb(sed,ancillary,avdata,ebv):
+def sed_fit_bb(sed,ancillary):
     # Fit L, T_eff via a blackbody
-    # XXX No outlier rejection here
+    # XXX Need outlier rejection here too
     
     wavel=sed[sed['mask']>0]['wavel']/1.e10
     flux=sed[sed['mask']>0]['dered']
@@ -3068,9 +2893,6 @@ def sed_fit_bb(sed,ancillary,avdata,ebv):
 
         # Get default start (guess) parameters
         modelstartteff=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelStartTeff",1])
-        modelstartlogg=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelStartLogg",1])
-        modelstartfeh=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelStartFeH",1])
-        modelstartafe=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelStartAFe",1])
         # Get outlier rejection criteria
         maxoutliers=int(pyssedsetupdata[pyssedsetupdata[:,0]=="MaxOutliers",1])
         minoutliers=int(pyssedsetupdata[pyssedsetupdata[:,0]=="MaxOutliers",1])
@@ -3079,19 +2901,15 @@ def sed_fit_bb(sed,ancillary,avdata,ebv):
         priors=get_priors(ancillary)
         if ((modelstartteff>priors[0]['max']) or (modelstartteff<priors[0]['min'])):
             modelstartteff=(priors[0]['max']+priors[0]['min'])/2.
-        avcorrtype=int(pyssedsetupdata[pyssedsetupdata[:,0]=="ExtCorrDetail",1])
-        if (avcorrtype>0):
-            sed=deredden2(sed,avdata,ebv,modelstartteff,modelstartlogg,modelstartfeh,modelstartafe)
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore",message="invalid value encountered in subtract")
 
-            if (avcorrtype>2):
-                teff=optimize.minimize(chisq_model_with_extinction,modelstartteff,args=(np.array(["bb"]),priors,[],[],sed,avdata,ebv,modelstartlogg,modelstartfeh,modelstartafe),method='Nelder-Mead')['x'][0]
-            else:
-                teff=optimize.minimize(chisq_model,modelstartteff,args=(freq,flux,ferr,np.array(["bb"]),priors,[],[]),method='Nelder-Mead')['x'][0]
+            teff=optimize.minimize(chisq_model,modelstartteff,args=(freq,flux,ferr,np.array(["bb"]),priors,[],[]),method='Nelder-Mead')['x'][0]
             
             bb,fratio,chisq=compute_model(teff,freq,flux,ferr,np.array(["bb"]),priors,[],[])
+        
+        # XXX Need outlier rejection
         
         # Recompute after fitting with all data
     #    wavel=sed['wavel']/1.e10
@@ -3118,7 +2936,7 @@ def sed_fit_bb(sed,ancillary,avdata,ebv):
     return sed,wavel,bb,teff,rsun,lum,chisq
 
 # -----------------------------------------------------------------------------
-def sed_fit_simple(sed,ancillary,modeldata,avdata,ebv):
+def sed_fit_simple(sed,ancillary,modeldata):
     # Fit L, T_eff & log(g) to a set of models
     # (Based on McDonald 2009-2017: Assume fixed d, [Fe/H], E(B-V), R_v)
     # (For fast computation)
@@ -3133,10 +2951,6 @@ def sed_fit_simple(sed,ancillary,modeldata,avdata,ebv):
     if (dist>0.):
 
         # Get default start (guess) parameters
-        avcorrtype=int(pyssedsetupdata[pyssedsetupdata[:,0]=="ExtCorrDetail",1])
-        fitebv=int(pyssedsetupdata[pyssedsetupdata[:,0]=="FitEBV",1])
-        fitebvgrid=int(pyssedsetupdata[pyssedsetupdata[:,0]=="TeffEBVGrid",1])
-        ebvoutliers=int(pyssedsetupdata[pyssedsetupdata[:,0]=="RejectOutliersDuringEBVFit",1])
         modelstartteff=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelStartTeff",1])
         modelstartfeh=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelStartFeH",1])
         modelstartlogg=float(pyssedsetupdata[pyssedsetupdata[:,0]=="ModelStartLogg",1])
@@ -3177,19 +2991,17 @@ def sed_fit_simple(sed,ancillary,modeldata,avdata,ebv):
         mass=float(pyssedsetupdata[pyssedsetupdata[:,0]=="DefaultMass",1])
         usemsmass=int(pyssedsetupdata[pyssedsetupdata[:,0]=="UseMSMass",1])
         if (precomputelogg > 0):
-            sed,bbwavel,bb,modelstartteff,bbrsun,bblum,bbchisq=sed_fit_bb(sed,ancillary,avdata,ebv)
+            sed,bbwavel,bb,modelstartteff,bbrsun,bblum,bbchisq=sed_fit_bb(sed,ancillary)
             if (usemsmass>0):
                 mass=estimate_mass(modelstartteff,bblum)
             logg=4.44+np.log10(mass/bbrsun**2)
             # Check log(g) not too high/low
             if (logg<np.min(modeldata['logg'])):
-                logg=np.min(modeldata['logg'])+0.01
+                logg=np.min(modeldata['logg'])+0.001
             if (logg>np.max(modeldata['logg'])):
-                logg=np.max(modeldata['logg'])-0.01
+                logg=np.max(modeldata['logg'])-0.001
             if (verbosity>80):
                 print ("Revised log g =",logg,"[",np.min(modeldata['logg']),np.max(modeldata['logg']),"]")
-            if (modelstartteff<3000.):
-                modelstartteff=3000.
 
         # Get outlier rejection criteria
         maxoutliers=int(pyssedsetupdata[pyssedsetupdata[:,0]=="MaxOutliers",1])
@@ -3228,48 +3040,39 @@ def sed_fit_simple(sed,ancillary,modeldata,avdata,ebv):
             raise
         
         # Restrict parameters by metallicity
-        params,values,femask=model_subset(oparams,ovalues,teff="All",logg="All",feh=feh,alphafe=alphafe)
+        fehs=np.unique(oparams[:,2])
+        flo=fehs[np.searchsorted(fehs,feh,side='left')-1]
+        if (flo>=fehs[-1]):
+            flo=fehs[np.searchsorted(fehs,feh,side='left')-2]
+            fhi=fehs[np.searchsorted(fehs,feh,side='left')-1]
+        else:
+            fhi=fehs[np.searchsorted(fehs,feh,side='left')]
+        afes=np.unique(oparams[:,3])
+        alo=afes[np.searchsorted(afes,alphafe,side='left')-1]
+        if (alo>=afes[-1]):
+            alo=afes[np.searchsorted(afes,alphafe,side='left')-2]
+            ahi=afes[np.searchsorted(afes,alphafe,side='left')-1]
+        else:
+            ahi=afes[np.searchsorted(afes,alphafe,side='left')]
+        #print (np.shape(params),np.shape(valueselector),params.dtype,valueselector.dtype)
+        femask=((oparams[:,2]==flo) | (oparams[:,2]==fhi)) & ((oparams[:,3]==alo) | (oparams[:,3]==ahi))
+        params=oparams[femask]
+        values=ovalues[femask]
 
-        # (Re)derive extinction
-        if (avcorrtype>0):
-            sed=deredden2(sed,avdata,ebv,modelstartteff,logg,feh,alphafe)
-
-        # Perform main fit
-        # Lower tolerance here because refining fit done later after outlier rejection
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore",message="invalid value encountered in subtract")
 
-            if (fitebv>0): # Fit extinction and temperature
-                if (ebvoutliers==0): # Stop outlier fitting if fitting E(B-V)
-                    maxoutliers=0
-                if (avcorrtype>2):
-                    # For initial setup, set starting simplex to ensure adequate parameter space covered
-                    initialsimplex=np.array([[modelstartteff,ebv], [modelstartteff*1.1,ebv], [modelstartteff,ebv*2.]])
-                    p=optimize.minimize(fit_teff_ebv,np.array([modelstartteff,ebv*1.]),args=(np.array(["simple",logg,feh,alphafe]),priors,params,values,sed,avdata,logg,feh,alphafe),method='Nelder-Mead',options ={'initial_simplex': initialsimplex}
-)
-                    teff,ebv=p.x
-                    if (verbosity>95):
-                        print ("Returned Teff,E(B-V):",teff,ebv)
-                    sed=deredden2(sed,avdata,ebv,teff,logg,feh,alphafe)
-                else:
-                    print_fail ("Extinction fitting attempted for unsupported Av correction type.")
-                    print ("Set FitEBV = 0 or ExtCorrDetail > 2")
-                    exit()
-            else: # Fit only temperature
-                if (avcorrtype>2): # revise extinction as we go
-                    teff=optimize.minimize(chisq_model_with_extinction,modelstartteff,args=(np.array(["simple",logg,feh,alphafe]),priors,params,values,sed,avdata,ebv,logg,feh,alphafe),method='Nelder-Mead',tol=10)['x'][0]
-                    sed=deredden2(sed,avdata,ebv,teff,logg,feh,alphafe)
-                else: # use extisting extinction
-                    teff=optimize.minimize(chisq_model,modelstartteff,args=(freq,flux,ferr,np.array(["simple",logg,feh,alphafe]),priors,params,values),method='Nelder-Mead',tol=10)['x'][0]
+            # Perform rough initial fit
+            teff=optimize.minimize(chisq_model,modelstartteff,args=(freq,flux,ferr,np.array(["simple",logg,feh,alphafe]),priors,params,values),method='Nelder-Mead',tol=30)['x'][0]
             # Compute final model
             model,fratio,chisq=compute_model(teff,freq,flux,ferr,np.array(["simple",logg,feh,alphafe]),priors,params,values)
 
         # If no good model can be identified, use a blackbody instead
         if (np.isnan(chisq)):
             print_warn("Best-fitting model returned NaN - reverting to blackbody fit")
-            sed,modwave,modflux,teff,rad,lum,chisq=sed_fit_bb(sed[sed['mask']>0],ancillary,avdata,ebv)
+            sed,modwave,modflux,teff,rad,lum,chisq=sed_fit_bb(sed[sed['mask']>0],ancillary)
             #sed[sed['mask']>0]['model']=foo['model']
-            return sed,wavel,model,teff,rad,lum,logg,feh,chisq,ebv
+            return sed,wavel,model,teff,rad,lum,logg,feh,chisq
         else:
             if (verbosity>=80):
                 print ("Beginning fit = Teff,chi^2_r:",teff,chisq)
@@ -3301,9 +3104,6 @@ def sed_fit_simple(sed,ancillary,modeldata,avdata,ebv):
                 if (verbosity>70):
                     print ("Outlier",i+1,":",outsed[sedidx]['catname'],outsed[sedidx]['filter'],", outlier by factor =",np.max(outratio))
                 testsed=np.delete(np.copy(outsed),sedidx) # Another temporary copy, masking the current outlier
-                # Rederive extinction
-                if (avcorrtype>1):
-                    testsed=deredden2(testsed,avdata,ebv,teff,logg,feh,alphafe)
                 ntestable=((testsed[testsed['mask']>0]['wavel']>minlambda*10000.) & (testsed[testsed['mask']>0]['wavel']<maxlambda*10000.)).sum()
                 if ((ntestable<minoutliers) or (len(testsed[testsed['mask']>0])<=2)):
                     if (verbosity>90):
@@ -3319,18 +3119,7 @@ def sed_fit_simple(sed,ancillary,modeldata,avdata,ebv):
                 # Refit the data
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore",message="invalid value encountered in subtract")
-
-                    if (fitebv>0):
-                        p=optimize.minimize(fit_teff_ebv,np.array([modelstartteff,ebv]),args=(np.array(["simple",logg,feh,alphafe]),priors,params,testvalues,testsed,avdata,logg,feh,alphafe),method='Nelder-Mead',tol=10)['x'][0]
-                        teff,ebv=p.x
-                        print ("Outlier",i,"returned:",teff,ebv)
-                        sed=deredden2(sed,avdata,ebv,teff,logg,feh,alphafe)
-                    elif (avcorrtype>2):
-                        teff=optimize.minimize(chisq_model_with_extinction,modelstartteff,args=(np.array(["simple",logg,feh,alphafe]),priors,params,testvalues,testsed,avdata,ebv,logg,feh,alphafe),method='Nelder-Mead',tol=10)['x'][0]
-                        sed=deredden2(sed,avdata,ebv,teff,logg,feh,alphafe)
-                    else:
-                        testteff=optimize.minimize(chisq_model,modelstartteff,args=(testfreq,testflux,testferr,np.array(["simple",logg,feh,alphafe]),priors,params,testvalues),method='Nelder-Mead',tol=0.25)['x'][0]
-
+                    testteff=optimize.minimize(chisq_model,modelstartteff+500.,args=(testfreq,testflux,testferr,np.array(["simple",logg,feh,alphafe]),priors,params,testvalues),method='Nelder-Mead',tol=30)['x'][0]
                     testmodel,testfratio,testchisq=compute_model(testteff,testfreq,testflux,testferr,np.array(["simple",logg,feh,alphafe]),priors,params,testvalues)
                     outsed[sedidx]['mask']=False
                 # If the improvement in chi^2 is enough...
@@ -3358,7 +3147,6 @@ def sed_fit_simple(sed,ancillary,modeldata,avdata,ebv):
                     flux=testflux
                     ferr=testferr
                     chisq=testchisq
-                    sed['dered']=outsed['dered']
                     sed['mask']=outsed['mask']
                 else:
                     seqoutliers+=1
@@ -3386,7 +3174,9 @@ def sed_fit_simple(sed,ancillary,modeldata,avdata,ebv):
         ferr=np.nan_to_num(ferr, nan=1.e6)
         freq=299792458./wavel
 
+        # Repeat computation to get specific intensity of interpolated model [Jy]
         # Perform more precise fit to include revised logg
+        # XXX Temporarily removed for bug hunting
         # Iterate log(g) if specified
         if (iteratelogg > 0):
             spint,foo,bar=compute_model(teff,freq,flux,ferr,np.array(["simple",logg,feh,alphafe]),priors,params,np.expand_dims(modeldata['lum'][femask],axis=1))
@@ -3402,27 +3192,12 @@ def sed_fit_simple(sed,ancillary,modeldata,avdata,ebv):
                 logg=np.max(modeldata['logg'])-0.001
             if (verbosity>80):
                 print ("Revised log g =",logg,"[",np.min(modeldata['logg']),np.max(modeldata['logg']),"]")
-
         values=np.array(modeldata[sed[sed['mask']>0]['svoname']].tolist())
         values=values[femask]
-
-        # Perform final refining fit
-        if (fitebv>0):
-            p=optimize.minimize(fit_teff_ebv,np.array([teff,ebv]),args=(np.array(["simple",logg,feh,alphafe]),priors,params,values,sed,avdata,logg,feh,alphafe),method='Nelder-Mead',tol=0.25)
-            teff,ebv=p.x
-            if (verbosity>95):
-                print ("Returned Teff,E(B-V):",teff,ebv)
-            sed=deredden2(sed,avdata,ebv,teff,logg,feh,alphafe)
-            if (fitebvgrid>0):
-                fit_teff_ebv_grid(teff,np.array(["simple",logg,feh,alphafe]),priors,params,values,sed,avdata,ebv,logg,feh,alphafe)
-        elif (avcorrtype>2):
-            teff=optimize.minimize(chisq_model_with_extinction,teff,args=(np.array(["simple",logg,feh,alphafe]),priors,params,values,sed,avdata,ebv,logg,feh,alphafe),method='Nelder-Mead',tol=0.25)['x'][0]
-            sed=deredden2(sed,avdata,ebv,teff,logg,feh,alphafe)
-        else:
-            teff=optimize.minimize(chisq_model,teff,args=(freq,flux,ferr,np.array(["simple",logg,feh,alphafe]),priors,params,values),method='Nelder-Mead',tol=0.25)['x'][0]
+        teff=optimize.minimize(chisq_model,teff,args=(freq,flux,ferr,np.array(["simple",logg,feh,alphafe]),priors,params,values),method='Nelder-Mead',tol=0.25)['x'][0]
      
         # Compute final model
-        # Repeat computation to get specific intensity of interpolated model [Jy]
+        # Recompute after fitting with all data
         # XXX Can't invoke because of duplicate names in unmasked SED data
         # XXX Would like option to predict other bands
         wavel=sed['wavel']/1.e10
@@ -3475,240 +3250,17 @@ def sed_fit_simple(sed,ancillary,modeldata,avdata,ebv):
             print_warn ("Failed due to invalid distance - ignoring object")
             print (ancillary)
     
-    return sed,wavel,model,teff,rsun,lum,logg,feh,chisq,ebv
-
-# -----------------------------------------------------------------------------
-def deredden2(sed,avdata,ebv,teff,logg,feh,afe):
-    # Deredden algorithm for tabulated Av data
-
-    start=datetime.now()
-
-    avs=[0.1,3.1,10,31] # to match those used in makemodel.py
-    rv=3.1
-    
-    # Set global parameters to avoid unnecessary updating
-    global deredden2_teff
-    global deredden2_ebv
-    deredden2_teff=teff
-    deredden2_ebv=ebv
-    
-    modeldata=avdata[0]
-    oparams=np.stack((modeldata['teff'],modeldata['logg'],modeldata['metal'],modeldata['alpha']),axis=1)
-    try:
-        # Values aren't actually used in this instance - only to get the selector of which grid points are needed
-        ovalues=np.array(modeldata[sed[sed['mask']>0]['svoname']].tolist())
-    except KeyError:
-        print_fail ("KeyError when extracting extinction models!")
-        print ("This can occur if additional filters have been introduced that have not been convolved with the models.")
-        print ("Do the first lines of the extinction files [almabda-<name>-*-recast.dat] include all entries in the filter input file?")
-        print ("If not, run 'python3 makemodel.py <name> [setup file]; python3 pyssed.py single '<any star name>' simple [setup file]; source shorten-model.scr'")
-        raise
-
-    foo,bar,selector=model_subset(oparams,ovalues,teff,logg,feh,afe)
-    avsubset=avdata[:,selector]
-    
-    modeldata=avsubset[0]
-    params=np.stack((modeldata['teff'],modeldata['logg'],modeldata['metal'],modeldata['alpha']),axis=1)
-    interpav=np.empty((len(avsubset),len(sed[sed['mask']>0]['svoname'])),dtype=float)
-    for i in np.arange(len(avsubset)):
-        modeldata=avsubset[i]
-        values=np.array(modeldata[sed[sed['mask']>0]['svoname']].tolist())
-        interpav[i]=model_interp(params,values,teff,logg,feh,afe)
-
-    #print (interpav)
-    #print (sed[sed['mask']>0]['flux'])
-        
-    try:
-        cs = interpolate.CubicSpline(avs,interpav)
-        alambdabyav=cs(ebv)
-        extmags=alambdabyav*ebv*rv
-        extinction=10**(extmags/-2.5)
-        dered=sed[sed['mask']>0]['flux']/extinction
-        derederr=sed[sed['mask']>0]['ferr']/extinction
-        np.put(sed[:]['dered'],(sed['mask']>0).nonzero(),dered)
-        np.put(sed[:]['derederr'],(sed['mask']>0).nonzero(),derederr)
-    except:
-        if (verbosity>80):
-            print_warn ("Assigning interpolated values failed (e.g., because outside range)")
-
-    now=datetime.now()
-    elapsed=((now-start).seconds+(now-start).microseconds/1000000.)
-    if (verbosity>97):
-        print ("Deredden2 [Teff,E(B-V)] =",teff,ebv,"(",elapsed,"seconds)")
-    
-    return sed
-
-# -----------------------------------------------------------------------------
-def model_subset(params,valueselector,teff="All",logg="All",feh="All",alphafe="All"):
-
-    start=datetime.now()
-
-    cutparams=params
-    cutvalues=valueselector
-    selector=np.ones(len(params),dtype=bool)
-    if (teff!="All"):
-        teffs=np.unique(params[:,0])
-        tlo=teffs[np.searchsorted(teffs,teff,side='left')-1]
-        if (tlo>=teffs[-1]):
-            tlo=teffs[np.searchsorted(teffs,teff,side='left')-2]
-            thi=teffs[np.searchsorted(teffs,teff,side='left')-1]
-        else:
-            thi=teffs[np.searchsorted(teffs,teff,side='left')]
-        selector*=((params[:,0]==tlo) | (params[:,0]==thi))
-
-    if (logg!="All"):
-        loggs=np.unique(params[:,1])
-        glo=loggs[np.searchsorted(loggs,logg,side='left')-1]
-        if (glo>=loggs[-1]):
-            glo=loggs[np.searchsorted(loggs,logg,side='left')-2]
-            ghi=loggs[np.searchsorted(loggs,logg,side='left')-1]
-        else:
-            ghi=loggs[np.searchsorted(loggs,logg,side='left')]
-        selector*=((params[:,1]==glo) | (params[:,1]==ghi))
-
-    if (feh!="All"):
-        fehs=np.unique(params[:,2])
-        flo=fehs[np.searchsorted(fehs,feh,side='left')-1]
-        if (flo>=fehs[-1]):
-            flo=fehs[np.searchsorted(fehs,feh,side='left')-2]
-            fhi=fehs[np.searchsorted(fehs,feh,side='left')-1]
-        else:
-            fhi=fehs[np.searchsorted(fehs,feh,side='left')]
-        selector*=((params[:,2]==flo) | (params[:,2]==fhi))
-
-    if (alphafe!="All"):
-        afes=np.unique(params[:,3])
-        alo=afes[np.searchsorted(afes,alphafe,side='left')-1]
-        if (alo>=afes[-1]):
-            alo=afes[np.searchsorted(afes,alphafe,side='left')-2]
-            ahi=afes[np.searchsorted(afes,alphafe,side='left')-1]
-        else:
-            ahi=afes[np.searchsorted(afes,alphafe,side='left')]
-        selector*=((params[:,3]==alo) | (params[:,3]==ahi))
-    
-    cutparams=cutparams[selector]
-    cutvalues=cutvalues[selector]
-    
-    now=datetime.now()
-    elapsed=((now-start).seconds+(now-start).microseconds/1000000.)
-    if (verbosity>97):
-        print ("Model subset:",np.shape(params),"->",np.shape(cutparams),";",np.shape(valueselector),"->",np.shape(cutvalues),";",np.sum(selector),"of",len(selector),"(",elapsed,"seconds)")
-
-    return cutparams,cutvalues,selector
-
-# -----------------------------------------------------------------------------
-def model_interp(cutparams,cutvalues,teff,logg,feh,alphafe):
-    # Interpolate between grid points
-
-    interp_grid_points = np.array([float(teff),float(logg),float(feh),float(alphafe)])
-    interp_data_points = np.zeros((len(cutvalues[0,:])))
-
-    values=cutvalues[:,0]
-    interpfn = interpolate.griddata(cutparams,cutvalues,interp_grid_points, method='linear', rescale=True)
-    df = pd.DataFrame(interpfn)
-    modeldata = df.interpolate().to_numpy()
-    interp_data_points=np.atleast_1d(np.squeeze(modeldata))
-    
-    if (verbosity>97):
-        print ("Model interpolation:",np.shape(interp_data_points),np.shape(interp_grid_points),np.shape(interp_data_points))
-
-    return interp_data_points
+    return sed,wavel,model,teff,rsun,lum,logg,feh,chisq
 
 # -----------------------------------------------------------------------------
 def chisq_model(teff,freq,flux,ferr,modeltype,priors,params,values):
-    # Wrapper to only return the chisq
+    # Fit T_eff via a model for frequency in Hz
+    # Fit in THz, rather than Hz, to avoid overflow
+    # Returns flux from an emitter with area 1"^2 in Jy
 
     model,offset,chisq=compute_model(teff,freq,flux,ferr,modeltype,priors,params,values)
 
     return chisq
-
-# -----------------------------------------------------------------------------
-def chisq_model_with_extinction(teff,modeltype,priors,params,values,sed,avdata,ebv,logg,feh,afe):
-    # As chisq model but includes extinction
-    # Make use of global deredden2_teff to determine whether extinction correction is needed
-
-    hitol=float(pyssedsetupdata[pyssedsetupdata[:,0]=="HiTDeredTol",1])
-    lotol=float(pyssedsetupdata[pyssedsetupdata[:,0]=="LoTDeredTol",1])
-    tolx=float(pyssedsetupdata[pyssedsetupdata[:,0]=="TDeredBound",1])
-    
-    if (teff>tolx):
-        deredtol=hitol
-    else:
-        deredtol=lotol
-
-    # Only update dereddening if E(B-V) has changed or large Teff difference
-    if (ebv==0.):
-        sed['dered']=sed['flux']
-    elif ((ebv!=deredden2_ebv) | (np.abs(teff-deredden2_teff)>deredtol/ebv)):
-        sed=deredden2(sed,avdata,ebv,np.squeeze(teff),logg,feh,afe)
-    elif (verbosity>97):
-        print ("Not updating dereddening",teff,"~",deredden2_teff)
-    sed['derederr']=sed['ferr']*sed['dered']/sed['flux']
-    wavel=sed[sed['mask']>0]['wavel']/1.e10
-    flux=sed[sed['mask']>0]['dered']
-    ferr=sed[sed['mask']>0]['derederr']
-    ferr=np.nan_to_num(ferr, nan=1.e6)
-    freq=299792458./wavel
-    model,offset,chisq=compute_model(teff,freq,flux,ferr,modeltype,priors,params,values)
-
-    return chisq
-
-# -----------------------------------------------------------------------------
-def fit_teff_ebv(p,modeltype,priors,params,values,sed,avdata,logg,feh,afe):
-    # As chisq_model_with_extinction but packaged for scipy.optimize.minimize
-    
-    teff=p[0]
-    ebv=p[1]
-    chisq=chisq_model_with_extinction(teff,modeltype,priors,params,values,sed,avdata,ebv,logg,feh,afe)
-
-    if (verbosity>96):
-        print ("Fitting Teff,E(B-V) at chisq:",teff,ebv,chisq)
-
-    return chisq
-
-# -----------------------------------------------------------------------------
-def fit_teff_ebv_grid(tefffit,modeltype,priors,params,values,sed,avdata,ebvfit,logg,feh,alphafe):
-    # Generates grid
-    # NB: does not update log(g), [Fe/H] or [alpha/Fe]
-
-    if (verbosity>80):
-        print ("Generating Teff versus E(B-V) goodness-of-fit grid")
-
-    outdir=str(pyssedsetupdata[pyssedsetupdata[:,0]=="TeffEBVGridDir",1])[2:-2]
-    tefftype=str(pyssedsetupdata[pyssedsetupdata[:,0]=="TeffGridType",1])[2:-2]
-    teffmin=float(pyssedsetupdata[pyssedsetupdata[:,0]=="TeffGridMin",1])
-    teffmax=float(pyssedsetupdata[pyssedsetupdata[:,0]=="TeffGridMax",1])
-    teffpts=int(pyssedsetupdata[pyssedsetupdata[:,0]=="TeffGridPoints",1])
-    ebvtype=str(pyssedsetupdata[pyssedsetupdata[:,0]=="EBVGridType",1])[2:-2]
-    ebvmin=float(pyssedsetupdata[pyssedsetupdata[:,0]=="EBVGridMin",1])
-    ebvmax=float(pyssedsetupdata[pyssedsetupdata[:,0]=="EBVGridMax",1])
-    ebvpts=int(pyssedsetupdata[pyssedsetupdata[:,0]=="EBVGridPoints",1])
-
-    outfile=outdir+"grid.dat"
-    with open(outfile, "w") as f:
-        f.write("#Teff E(B-V) chi^2\n")
-    chisqgrid=np.zeros((teffpts,ebvpts))
-    if (tefftype=="logarithmic"):
-        teffs=np.logspace(np.log10(teffmin),np.log10(teffmax),teffpts)
-    else:
-        teffs=np.linspace(teffmin,teffmax,teffpts)
-    if (ebvtype=="logarithmic"):
-        ebvs=np.logspace(np.log10(ebvmin),np.log10(ebvmax),ebvpts)
-    else:
-        ebvs=np.linspace(ebvmin,ebvmax,ebvpts)
-    for t in np.arange(teffpts):
-        if (verbosity>90):
-            print ("Teff =",t)
-        for e in np.arange(ebvpts):
-            teff=teffs[t]
-            ebv=ebvs[e]
-            chisqgrid[t,e]=chisq_model_with_extinction(teff,modeltype,priors,params,values,sed,avdata,ebv,logg,feh,alphafe)
-            if (verbosity>97):
-                print ("Teff/E(B-V)/chi:",teff,ebv,chisqgrid[t,e])
-            with open(outfile, "a") as f:
-                f.write(str(teff)+" "+str(ebv)+" "+str(chisqgrid[t,e])+"\n")
-
-    return
 
 # -----------------------------------------------------------------------------
 def compute_model(teff,freq,flux,ferr,modeltype,priors,params,valueselector):
@@ -3747,18 +3299,40 @@ def compute_model(teff,freq,flux,ferr,modeltype,priors,params,valueselector):
         
         # Restrict grid of models to adjecent points for faster fitting
         # This is the reason for the earlier lengthy recasting process!
-        cutparams,cutvalues,selector=model_subset(params,valueselector,teff,logg)
-        
+        teffs=np.unique(params[:,0])
+        tlo=teffs[np.searchsorted(teffs,teff,side='left')-1]
+        if (tlo>=teffs[-1]):
+            tlo=teffs[np.searchsorted(teffs,teff,side='left')-2]
+            thi=teffs[np.searchsorted(teffs,teff,side='left')-1]
+        else:
+            thi=teffs[np.searchsorted(teffs,teff,side='left')]
+        loggs=np.unique(params[:,1])
+        glo=loggs[np.searchsorted(loggs,logg,side='left')-1]
+        if (glo>=loggs[-1]):
+            glo=loggs[np.searchsorted(loggs,logg,side='left')-2]
+            ghi=loggs[np.searchsorted(loggs,logg,side='left')-1]
+        else:
+            ghi=loggs[np.searchsorted(loggs,logg,side='left')]
+        #print (np.shape(params),np.shape(valueselector),params.dtype,valueselector.dtype)
+        cutparams=params[((params[:,0]==tlo) | (params[:,0]==thi)) & ((params[:,1]==glo) | (params[:,1]==ghi))]
+        cutvalues=valueselector[((params[:,0]==tlo) | (params[:,0]==thi)) & ((params[:,1]==glo) | (params[:,1]==ghi))]
+
         if (verbosity>97):
-            print ("Data length:",np.shape(flux))
             print ("Model list length:",np.shape(cutvalues))
             
         if (verbosity>=99):
             print (cutparams)
             print (cutvalues)
 
-        interp_data_points=model_interp(cutparams,cutvalues,teff,logg,feh,alphafe)
+        interp_grid_points = np.array([float(teff),float(logg),float(feh),float(alphafe)])
+        interp_data_points = np.zeros((len(cutvalues[0,:])))
+
+        values=cutvalues[:,0]
+        interpfn = interpolate.griddata(cutparams,cutvalues,interp_grid_points, method='linear', rescale=True)
+        df = pd.DataFrame(interpfn)
+        modeldata = df.interpolate().to_numpy()
         n=len(interp_data_points)
+        interp_data_points=np.squeeze(modeldata)
         if (verbosity>=99):
             print ("model",interp_data_points)
         with warnings.catch_warnings():
@@ -3795,7 +3369,7 @@ def compute_model(teff,freq,flux,ferr,modeltype,priors,params,valueselector):
             wt=np.ones(len(flux))
             if (useerrors>0):
                 # factor +1.e-30 to avoid divide by zero
-                wt/=np.sqrt((ferrratio/(flux+1.e-30))**2+wtoffset**2)/wtoffset**2
+                wt/=((ferrratio/(flux+1.e-30))**2+wtoffset**2)/wtoffset**2
             if (weightfit>0):
                 bbpeak=2.897771955e-3/teff
                 wavel=2.99792458e8/freq
@@ -3807,10 +3381,7 @@ def compute_model(teff,freq,flux,ferr,modeltype,priors,params,valueselector):
             chisq=np.sum((flux-model)**2*wt)/((n-1)*wtsum)
             #chisq=np.sum((flux-model)**2)/(n-1) # Set unity weighting for all data
     else:
-        chisq=9.e99
-
-    #if (verbosity>=95):
-    #    print ("     Chisq =            ",chisq)
+        chisq=0.
 
     # Apply weighting penalty from temperature prior
     if (len(priors)>0):
@@ -3821,32 +3392,30 @@ def compute_model(teff,freq,flux,ferr,modeltype,priors,params,valueselector):
             # Upper temperature limit
             if (priors[0]['maxerr']>0.):
                 prioruppersigma=(teff-priors[0]['max'])/priors[0]['maxerr']
-                if (prioruppersigma>10.):
-                    chisq/=(erf(prioruppersigma)+1.)/2.
+                chisq/=(erf(prioruppersigma)+1.)/2.
             elif (priors[0]['max']>teff):
                 chisq=1.e99
             # Lower temperature limit
             if (priors[0]['maxerr']>0.):
                 priorlowersigma=(priors[0]['min']-teff)/priors[0]['minerr']
-                if (priorlowersigma>10.):
-                    chisq/=(erf(priorlowersigma)+1.)/2.
+                chisq/=(erf(priorlowersigma)+1.)/2.
             elif (priors[0]['min']<teff):
                 chisq=1.e99
 
     if (verbosity>=90):
         print ("Teff,chisq =",teff,chisq)
-#        if (chisq==np.nan):
-#            exit()
+        if (chisq==np.nan):
+            exit()
 
     # Return fitted model values if more than one value to fit. Otherwise, return interpolated value.
     if (n>1):
         return 10**model,10**(offset),chisq
     else:
-        return np.squeeze(interp_data_points),10**(offset),chisq
+        return interp_data_points,10**(offset),chisq
 
 # -----------------------------------------------------------------------------
 def get_priors(ancillary):
-    priors=np.zeros(4,dtype=[('param','<U20'),('min','f4'),('max','f4'),('minerr','f4'),('maxerr','f4')])
+    priors=np.zeros(4,dtype=[('param','<U20'),('max','f4'),('min','f4'),('maxerr','f4'),('minerr','f4')])
     priors[0]=("Temp",1.,1.e38,0.,0.)
     priors[1]=("logg",-10.,10.,0.,0.)
     priors[2]=("[Fe/H]",-10.,10.,0.,0.)
@@ -3863,14 +3432,13 @@ def get_priors(ancillary):
     usetspec=float(pyssedsetupdata[pyssedsetupdata[:,0]=="UsePriorsOnTspec",1])
     if (usetspec>0):
         foo=ancillary[(ancillary['parameter']=="Tspec")]
-        if (len(foo)>0):
-            tspec=float(foo[(foo['mask']==True)]['value'])
-            tspecerr=float(foo[(foo['mask']==True)]['err'])
-            priortmax=tspec
-            priortmin=tspec
-            priortmaxerr=tspecerr
-            priortminerr=tspecerr
-            priors[0]=("Temp",priortmin,priortmax,priortminerr,priortmaxerr)
+        tspec=float(foo[(foo['mask']==True)]['value'])
+        tspecerr=float(foo[(foo['mask']==True)]['err'])
+        priortmax=tspec
+        priortmin=tspec
+        priortmaxerr=tspecerr
+        priortminerr=tspecerr
+        priors[0]=("Temp",priortmin,priortmax,priortminerr,priortmaxerr)
 
     return priors
 
@@ -4351,10 +3919,6 @@ def redbluemap():
 def plotsed(sed,modwave,modflux,plotfile,image):
     # Plot the completed individual SEDs to a file
     showinset=int(pyssedsetupdata[pyssedsetupdata[:,0]=="ShowAstrometryInset",1])
-    fixedminlambda=float(pyssedsetupdata[pyssedsetupdata[:,0]=="PlotLambdaMin",1])
-    fixedmaxlambda=float(pyssedsetupdata[pyssedsetupdata[:,0]=="PlotLambdaMax",1])
-    fixedminflux=float(pyssedsetupdata[pyssedsetupdata[:,0]=="PlotFluxMin",1])
-    fixedmaxflux=float(pyssedsetupdata[pyssedsetupdata[:,0]=="PlotFluxMax",1])
 
     line = {}
     points = {}
@@ -4371,6 +3935,7 @@ def plotsed(sed,modwave,modflux,plotfile,image):
     plt.xlabel("Wavelength (microns)")
     plt.ylabel("Flux (Jy)")
     plt.minorticks_on()
+
 
     # Plot the model if it exists
     if (len(modwave)>0):
@@ -4412,15 +3977,10 @@ def plotsed(sed,modwave,modflux,plotfile,image):
 
     # Clip the plot if data too faint
     maxrange=float(pyssedsetupdata[pyssedsetupdata[:,0]=="MaxSEDPlotFluxRange",1])
-    maxflux=np.max(y[y!=np.inf])
-    minflux=np.min(y[y>0])
+    maxflux=np.max(y)
+    minflux=np.min(y)
     if ((image==True) & (minflux*maxrange<maxflux)):
         plt.ylim(ymin=maxflux/maxrange)
-    # Set plot limits if requested
-    if ((fixedminlambda>0.) | (fixedmaxlambda>0.)):
-        plt.xlim([fixedminlambda,fixedmaxlambda])
-    if ((fixedminflux>0.) | (fixedmaxflux>0.)):
-        plt.ylim([fixedminflux,fixedmaxflux])
 
     # Overplot the unmasked in grey-red
     x=sed[sed['mask']>0]['wavel']/10000
@@ -4510,7 +4070,6 @@ def plotsed(sed,modwave,modflux,plotfile,image):
         inset_line['modeldec'] = my
 
     # Save the file
-    plt.tight_layout()
     if (image==True):
         plt.savefig(plotfile,dpi=150)
         plt.close("all")
@@ -4531,7 +4090,7 @@ def globalpostplots(compiledseds,compiledanc,sourcedata):
     # Load in luminosity, temperature and observed-to-model flux excesses
     teff=np.array([(a[a['parameter'].astype(str)=="Teff"]['value'].astype(float)).flatten() for a in compiledanc]).flatten()
     lum=np.array([(a[a['parameter'].astype(str)=="Luminosity"]['value'].astype(float)).flatten() for a in compiledanc]).flatten()
-    dist=np.array([(a[a['parameter'].astype(str)=="Dist"]['value'].astype(float)).flatten() for a in compiledanc]).flatten()
+    dist=np.array([(a[a['parameter'].astype(str)=="Distance"]['value'].astype(float)).flatten() for a in compiledanc]).flatten()
 
     teff0=teff[teff>0]
     lum0=lum[teff>0]
@@ -4539,59 +4098,57 @@ def globalpostplots(compiledseds,compiledanc,sourcedata):
     
     colours = np.zeros((len(sourcedata),4))
 
-    if (len(teff0)>0):
+    if (verbosity>=50):
+        print ("Creating H-R diagram")
 
-        if (verbosity>=50):
-            print ("Creating H-R diagram")
+    # Set up main axes
+    plt.xlabel('Effective temperature (K)')
+    plt.ylabel('Luminosity (L_Sun)')
+    plt.minorticks_on()
 
-        # Set up main axes
-        plt.xlabel('Effective temperature (K)')
-        plt.ylabel('Luminosity (L_Sun)')
-        plt.minorticks_on()
+    # Calculate range
+    hrdxbuffer=1.01 # padding to avoid points on edge of plot
+    hrdybuffer=1.10 # 1 = no padding
+    minlum=float(pyssedsetupdata[pyssedsetupdata[:,0]=="HRDMinLum",1])
+    maxlum=float(pyssedsetupdata[pyssedsetupdata[:,0]=="HRDMaxLum",1])
+    minteff=float(pyssedsetupdata[pyssedsetupdata[:,0]=="HRDMinTemp",1])
+    maxteff=float(pyssedsetupdata[pyssedsetupdata[:,0]=="HRDMaxTemp",1])
+    plt.xlim([np.min(teff0[teff0>minteff])/hrdxbuffer,np.max(teff0[teff0<maxteff])*hrdxbuffer])
+    plt.ylim([np.min(lum0[lum0>minlum])/hrdybuffer,np.max(lum0[lum0<maxlum])*hrdybuffer])
+    plt.gca().xaxis.set_major_formatter(plt.FormatStrFormatter('%i'))
+    plt.gca().set_yscale('log')
+    plt.gca().set_xscale('log')
+    plt.gca().invert_xaxis()
 
-        # Calculate range
-        hrdxbuffer=1.01 # padding to avoid points on edge of plot
-        hrdybuffer=1.10 # 1 = no padding
-        minlum=float(pyssedsetupdata[pyssedsetupdata[:,0]=="HRDMinLum",1])
-        maxlum=float(pyssedsetupdata[pyssedsetupdata[:,0]=="HRDMaxLum",1])
-        minteff=float(pyssedsetupdata[pyssedsetupdata[:,0]=="HRDMinTemp",1])
-        maxteff=float(pyssedsetupdata[pyssedsetupdata[:,0]=="HRDMaxTemp",1])
-        plt.xlim([np.min(teff0[teff0>minteff])/hrdxbuffer,np.max(teff0[teff0<maxteff])*hrdxbuffer])
-        plt.ylim([np.min(lum0[lum0>minlum])/hrdybuffer,np.max(lum0[lum0<maxlum])*hrdybuffer])
-        plt.gca().xaxis.set_major_formatter(plt.FormatStrFormatter('%i'))
-        plt.gca().set_yscale('log')
-        plt.gca().set_xscale('log')
-        plt.gca().invert_xaxis()
+    # Import colourmap
 
-        # Import colourmap
+    # Plot the Hertzsprung-Russell diagram
+    ptsize=np.maximum(25./np.sqrt(len(teff0)),1)
+    opacity=np.minimum((float(len(teff0))/100.)**(-1./3.),1)
+    newcmp=colourmap(opacity) # set colour map with opacity scaled to data volume
+    try:
+        plt.scatter(teff0,lum0,s=ptsize,c=np.argsort(dist0),cmap=newcmp,edgecolors='none',zorder=20)
+    except ValueError:
+        print_warn ("ValueError when plotting H-R diagram")
+        plt.scatter(teff0,lum0,s=ptsize,edgecolors='none',zorder=20)
 
-        # Plot the Hertzsprung-Russell diagram
-        ptsize=np.maximum(25./np.sqrt(len(teff0)),1)
-        opacity=np.minimum((float(len(teff0))/100.)**(-1./3.),1)
-        newcmp=colourmap(opacity) # set colour map with opacity scaled to data volume
-        try:
-            plt.scatter(teff0,lum0,s=ptsize,c=np.argsort(dist0),cmap=newcmp,edgecolors='none',zorder=20)
-        except ValueError:
-            print_warn ("ValueError when plotting H-R diagram. Maybe Teff, lum or dist is a flat array?")
-            plt.scatter(teff0,lum0,s=ptsize,edgecolors='none',zorder=20)
+    if (verbosity>=50):
+        print ("Creating excess diagram")
 
-        if (verbosity>=50):
-            print ("Creating excess diagram")
+    # Save the file
+    plotfile=np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="HRDPlotFile",1])[2:-2]        
+    plt.savefig(plotfile,dpi=300)
+    plt.close("all")
 
-        # Save the file
-        plotfile=np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="HRDPlotFile",1])[2:-2]        
-        plt.savefig(plotfile,dpi=300)
-        plt.close("all")
-
-        # Plot the flux-excess diagram
-        makexsplots=int(pyssedsetupdata[pyssedsetupdata[:,0]=="MakeXSPlots",1])
-        if (makexsplots>0):
-            lumxsplotfile=np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="LumXSPlotFile",1])[2:-2]        
-            xsspaceplotfile=np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="XSSpacePlotFile",1])[2:-2]        
-            xscorrnplotfile=np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="XSCorrnPlotFile",1])[2:-2]        
-            excesslumplot(lumxsplotfile,compiledseds[teff>0],compiledanc[teff>0],teff0)
-            excessspaceplot(xsspaceplotfile,compiledseds[teff>0],compiledanc[teff>0],teff0)
-            excesscorrnplot(xscorrnplotfile,compiledseds[teff>0],compiledanc[teff>0],teff0)
+    # Plot the flux-excess diagram
+    makexsplots=int(pyssedsetupdata[pyssedsetupdata[:,0]=="MakeXSPlots",1])
+    if (makexsplots>0):
+        lumxsplotfile=np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="LumXSPlotFile",1])[2:-2]        
+        xsspaceplotfile=np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="XSSpacePlotFile",1])[2:-2]        
+        xscorrnplotfile=np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="XSCorrnPlotFile",1])[2:-2]        
+        excesslumplot(lumxsplotfile,compiledseds[teff>0],compiledanc[teff>0],teff0)
+        excessspaceplot(xsspaceplotfile,compiledseds[teff>0],compiledanc[teff>0],teff0)
+        excesscorrnplot(xscorrnplotfile,compiledseds[teff>0],compiledanc[teff>0],teff0)
     
     return
 
@@ -4969,6 +4526,7 @@ def convert_master_file(name):
     result = pd.DataFrame(data=res_data, columns=header)
     return result
 
+
 # =============================================================================
 # MAIN PROGRAMME
 # =============================================================================
@@ -4976,7 +4534,7 @@ def pyssed(cmdtype,cmdparams,proctype,procparams,setupfile,handler,total_sources
 
     # Main routine
     errmsg=""
-    version="1.0.development.20231211"
+    version="0.3.20230925"
     try:
         startmain = datetime.now() # time object
         globaltime=startmain
@@ -5070,20 +4628,11 @@ def pyssed(cmdtype,cmdparams,proctype,procparams,setupfile,handler,total_sources
         print ("Parse/initiate command line options:",datetime.now()-startmain,"s")
 
     # ------------------------------------------------------------
-    # Get stellar atmosphere model data and extinction corrections at start of run, if needed
+    # Get stellar atmosphere model data at start of run, if needed
     if (proctype=="simple"):
         modeldata=get_model_grid()
-    if (proctype!="none"):
-        avcorrtype=int(pyssedsetupdata[pyssedsetupdata[:,0]=="ExtCorrDetail",1])
-        if (avcorrtype>0):
-            avdata=get_av_grid()
-        else:
-            avdata=[]
-    fitebv=int(pyssedsetupdata[pyssedsetupdata[:,0]=="FitEBV",1])
-    if (fitebv>0):
-        print_warn ("Warning! FitEBV is currently untested. Do not use for scientific results.")
-    if (speedtest):
-        print ("Stellar models:",datetime.now()-startmain,"s")
+        if (speedtest):
+            print ("Stellar models:",datetime.now()-startmain,"s")
 
     # -----------------------------------------------
     # Do all the special stuff for area searches here
@@ -5171,7 +4720,6 @@ def pyssed(cmdtype,cmdparams,proctype,procparams,setupfile,handler,total_sources
     ancillary_queries=get_ancillary_list()
     ancillary_params=np.array(["#Object","RA","Dec"],dtype="str")
     ancillary_params=np.append(ancillary_params,np.unique(ancillary_queries['paramname']),axis=0)
-    outputmasked=int(pyssedsetupdata[pyssedsetupdata[:,0]=="OutputMasked",1])
     sep=np.array2string(pyssedsetupdata[pyssedsetupdata[:,0]=="OutputSeparator",1])[2:-2]
     if (sep=="\\\\t"):
         sep="\t"
@@ -5183,10 +4731,6 @@ def pyssed(cmdtype,cmdparams,proctype,procparams,setupfile,handler,total_sources
     for i in np.arange(nparams-1,0,-1):
         ancillary_params[i*2-1]=ancillary_params[i]
         ancillary_params[i*2]="e_"+ancillary_params[i]
-    # Load data on filters and catalogues
-    filtdata=get_filter_list()
-    catdata=get_catalogue_list()
-    svodata=get_svo_data(filtdata)
     if (usepreviousrun<5):
         # Append = 0 -> start new file, write headers
         if (outappend==0):
@@ -5199,6 +4743,9 @@ def pyssed(cmdtype,cmdparams,proctype,procparams,setupfile,handler,total_sources
                 f.write("\n")
             # Write master output file header
             if (savemasteroutput>0):
+                filtdata=get_filter_list()
+                catdata=get_catalogue_list()
+                svodata=get_svo_data(filtdata)
                 # Data labels/catalogues
                 objectlist=np.array(["#Object"],dtype="str")
                 masterlist=np.array(["RA","Dec","PMRA","PMDec"],dtype="str")
@@ -5317,8 +4864,7 @@ def pyssed(cmdtype,cmdparams,proctype,procparams,setupfile,handler,total_sources
         #hdf5file25="gtomo/_data/app_data/explore_cube_density_values_025pc_v1.h5"
         #headers25,cube25,axes25,min_axes25,max_axes25,step25,hw25,points25,s25 = load_cube(hdf5file25)
         #ext_dist25, ext_av25, ext_dav25 = gtomo_reddening(sc, cube=cube25, axes=axes25, max_axes=max_axes25, step_pc=5)
-        #hdf5file50="gtomo/_data/app_data/explore_cube_density_values_050pc_v1.h5"
-        hdf5file50="gtomo/_data/app_data/explore_cube_density_values_050pc_v2.h5"
+        hdf5file50="gtomo/_data/app_data/explore_cube_density_values_050pc_v1.h5"
         headers50,cube50,axes50,min_axes50,max_axes50,step50,hw50,points50,s50 = load_cube(hdf5file50)
         ext_ra=float(cmdargs[2])
         ext_dec=float(cmdargs[3])
@@ -5440,7 +4986,6 @@ def pyssed(cmdtype,cmdparams,proctype,procparams,setupfile,handler,total_sources
                             #headers25,cube25,axes25,min_axes25,max_axes25,step25,hw25,points25,s25 = load_cube(hdf5file25)
                             #ext_dist25, ext_av25, ext_dav25 = gtomo_reddening(sc, cube=cube25, axes=axes25, max_axes=max_axes25, step_pc=5)
                             hdf5file50="gtomo/_data/app_data/explore_cube_density_values_050pc_v1.h5"
-                            hdf5file50="gtomo/_data/app_data/explore_cube_density_values_050pc_v2.h5"
                             headers50,cube50,axes50,min_axes50,max_axes50,step50,hw50,points50,s50 = load_cube(hdf5file50)
                             sc=SkyCoord(ext_ra*u.deg, ext_dec*u.deg, frame='icrs')
                             ext_dist50, ext_av50, ext_dav50 = gtomo_reddening(sc, cube=cube50, axes=axes50, max_axes=max_axes50, step_pc=5)
@@ -5448,7 +4993,7 @@ def pyssed(cmdtype,cmdparams,proctype,procparams,setupfile,handler,total_sources
                         #input_ebv=get_gtomo_ebv(dist,ext_dist50,ext_av50,ext_dist25,ext_av25)
                     else:
                         input_ebv=0.
-                    sed,ebv=deredden(sed,ancillary,dist,avdata,input_ebv)
+                    sed,ebv=deredden(sed,ancillary,dist,input_ebv)
                     
                     if ((verbosity>=97) or (verbosity>=70 and searchtype=="single")):
                         print (sed)
@@ -5474,8 +5019,13 @@ def pyssed(cmdtype,cmdparams,proctype,procparams,setupfile,handler,total_sources
             # --------------
             # SED processing
 
-            teff=0; lum=0; rad=0; logg=0; feh=0
-            chisq=0; fitsuccess=0
+            teff=0
+            lum=0
+            rad=0
+            logg=0
+            feh=0
+            chisq=0
+            fitsuccess=0
 
             # Do we need to process the SEDs? No...?
             if (proctype == "none"):
@@ -5496,14 +5046,14 @@ def pyssed(cmdtype,cmdparams,proctype,procparams,setupfile,handler,total_sources
                 if (proctype == "bb"):
                     if (verbosity > 20):
                         print ("Fitting SED with blackbody...")
-                    sed,modwave,modflux,teff,rad,lum,chisq=sed_fit_bb(sed,ancillary,avdata,ebv)
+                    sed,modwave,modflux,teff,rad,lum,chisq=sed_fit_bb(sed,ancillary)
                     logg=-9.99
                     feh=-9.99
                 # ...simple SED fit
                 elif (proctype == "simple"):
                     if (verbosity > 20):
                         print ("Fitting SED with simple stellar model...")
-                    sed,modwave,modflux,teff,rad,lum,logg,feh,chisq,ebv=sed_fit_simple(sed,ancillary,modeldata,avdata,ebv)
+                    sed,modwave,modflux,teff,rad,lum,logg,feh,chisq=sed_fit_simple(sed,ancillary,modeldata)
                 elif (proctype == "fit"):
                     if (verbosity > 20):
                         print ("Fitting SED with full stellar model...")
@@ -5561,16 +5111,20 @@ def pyssed(cmdtype,cmdparams,proctype,procparams,setupfile,handler,total_sources
                 ancempty['err']=0.
                 ancempty['priority']=0
                 ancempty['mask']=True
+                if (len(ancillary[ancillary['parameter']=="Distance"])==0):
+                    newanc=np.copy(ancempty)
+                    newanc['parameter']="Distance"
+                    newanc['value']=dist
+                    ancempty['catname']="Internal"
+                    ancempty['colname']="Merged"
+                    ancillary=np.append(ancillary,newanc)
                 if (len(ancillary[ancillary['parameter']=="E(B-V)"])==0):
                     newanc=np.copy(ancempty)
                     newanc['parameter']="E(B-V)"
                     newanc['value']=ebv
                     extmap=pyssedsetupdata[pyssedsetupdata[:,0]=="ExtMap",1]
                     newanc['catname']="Internal"
-                    if (fitebv>0):
-                        newanc['colname']="Fitted"
-                    else:
-                        newanc['colname']=extmap
+                    newanc['colname']=extmap
                     ancillary=np.append(ancillary,newanc)
                 if (len(ancillary[ancillary['parameter']=="Teff"])==0):
                     newanc=np.copy(ancempty)
@@ -5686,7 +5240,7 @@ def pyssed(cmdtype,cmdparams,proctype,procparams,setupfile,handler,total_sources
                 objectlist[0]=source.replace(" ","_")
                 masterlist=np.squeeze(np.array([ancillary[ancillary['colname']=='RA']['value'],ancillary[ancillary['colname']=='Dec']['value'],ancillary[ancillary['colname']=='PMRA']['value'],ancillary[ancillary['colname']=='PMDec']['value']],dtype="a12"))
                 mastererror=np.squeeze(np.array([ancillary[ancillary['colname']=='RA']['err'],ancillary[ancillary['colname']=='Dec']['err'],ancillary[ancillary['colname']=='PMRA']['err'],ancillary[ancillary['colname']=='PMDec']['err']],dtype="a12"))
-                fittedlist=np.array([reducto(teff),reducto(lum)],dtype="str")
+                fittedlist=np.array([teff,lum],dtype="str")
                 fittederror=np.array([0,0],dtype="str")
                 adoptedlist=np.array([dist,ebv,logg,feh],dtype="str")
                 adoptederror=np.array([0,0,0,0],dtype="str")
@@ -5697,39 +5251,30 @@ def pyssed(cmdtype,cmdparams,proctype,procparams,setupfile,handler,total_sources
                 ferrlist=np.zeros(len(filtlist),dtype="object")
                 deredlist=np.zeros(len(filtlist),dtype="object")
                 modellist=np.zeros(len(filtlist),dtype="object")
-                if ((outputmasked>0) | (type(sed)==int)):
-                    sedcopy=np.copy(sed)
-                else:
-                    sedcopy=np.copy(sed)[sed['mask']==True]
                 for i in np.arange(len(catlist)):
                     cat=catlist[i]
                     try:
-                        # Don't use sedcopy here as want to preserve IDs even if flux not used
                         objlist[i]=reducto(sed[sed['catname']==cat]['objid'])
                     except:
                         objlist[i]=""
                 for i in np.arange(len(filtlist)):
                     filt=filtlist[i]
                     try:
-                        fluxlist[i]=reducto(sedcopy[sedcopy['svoname']==filt]['flux'])
+                        fluxlist[i]=reducto(sed[sed['svoname']==filt]['flux'])
                     except:
                         fluxlist[i]=0.
                     try:
-                        ferrlist[i]=reducto(sedcopy[sedcopy['svoname']==filt]['ferr'])
+                        ferrlist[i]=reducto(sed[sed['svoname']==filt]['ferr'])
                     except:
                         ferrlist[i]=0.
                     try:
-                        deredlist[i]=reducto(sedcopy[sedcopy['svoname']==filt]['dered'])
+                        deredlist[i]=reducto(sed[sed['svoname']==filt]['dered'])
                     except:
                         deredlist[i]=0.
                     try:
-                        modellist[i]=reducto(sedcopy[sedcopy['svoname']==filt]['model'])
+                        modellist[i]=reducto(sed[sed['svoname']==filt]['model'])
                     except:
                         modellist[i]=0.
-                if ((outputmasked>0) | (type(ancillary)==int)):
-                    ancillarycopy=np.copy(ancillary)
-                else:
-                    ancillarycopy=np.copy(ancillary)[ancillary['mask']==True]
                 ancillarylist=np.copy(ancillary_queries['paramname'])
                 ancillarycats=np.copy(ancillary_queries['catname'])
                 vallist=np.zeros(len(ancillarylist),dtype="object")
@@ -5738,27 +5283,24 @@ def pyssed(cmdtype,cmdparams,proctype,procparams,setupfile,handler,total_sources
                 for i in np.arange(len(ancillarylist)):
                     anc=ancillarylist[i]
                     try:
-                        vallist[i]=reducta(ancillarycopy[ancillarycopy['parameter']==anc]['value'])
+                        vallist[i]=reducta(ancillary[ancillary['parameter']==anc]['value'])
                     except:
                         vallist[i]=0.
                     try:
-                        errlist[i]=reducta(ancillarycopy[ancillarycopy['parameter']==anc]['err'])
+                        errlist[i]=reducta(ancillary[ancillary['parameter']==anc]['err'])
                     except:
                         errlist[i]=0.
                     try:
-                        srclist[i]=reducta(ancillarycopy[ancillarycopy['parameter']==anc]['catname'])
+                        srclist[i]=reducta(ancillary[ancillary['parameter']==anc]['catname'])
                     except:
                         srclist[i]=0.
 #                masteroutputdata=np.concatenate((objectlist,masterlist.astype(str),mastererror.astype(str),fittedlist,fittederror,adoptedlist,adoptederror,fluxlist,ferrlist,deredlist,modellist,vallist,errlist,srclist.astype(str)))
                 masteroutputdata=np.concatenate((objectlist,masterlist.astype(str),mastererror.astype(str),fittedlist,fittederror,adoptedlist,adoptederror,objlist,fluxlist,ferrlist,deredlist,modellist,vallist,errlist,srclist))
                 with open(outmasterfile, "a") as f:
                     f.write(sep.join(str(x) for x in masteroutputdata)+"\n")
-                if (handler != None):
-                    mastercsv = convert_master_file(outmasterfile)
-                    results["masteroutput.csv"] = mastercsv
 
         sed=np.array([])
-        ancillary=np.zeros([np.size(ancillary_queries)+5],dtype=[('parameter',object),('catname',object),('colname',object),('value',object),('err',object),('priority',object),('mask',bool)])
+        ancillary=np.zeros([np.size(ancillary_queries)+4],dtype=[('parameter',object),('catname',object),('colname',object),('value',object),('err',object),('priority',object),('mask',bool)])
         if (speedtest):
             print ("Finished source:",datetime.now()-startsource,"s")
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -5,7 +5,7 @@
 # (e.g. don't introduce whitespace on end of lines, etc.)
 
 # Set the amount of chatter (0 = silent; 10-70 = typical; 99 = debug)
-verbosity	30
+verbosity	50
 
 # Default epoch to use for Gaia (Gaia EDR3 = 2016.0)
 GaiaEpoch	2016.0
@@ -29,7 +29,7 @@ DefaultError	0.3
 MinPhotError	0.1
 
 # Include photometric data in weighted average if:
-#	Max(Error_1, MinPhotError) / Max(Error_n, MinPhotError) > PhotWeightLimit
+# 	Max(Error_1, MinPhotError) / Max(Error_n, MinPhotError) > PhotWeightLimit
 # where 1 is the most-precise photometry and n is the photometry being tested
 PhotWeightingLimit	0.2
 
@@ -45,9 +45,6 @@ VizierRowLimit	250000
 
 # Number of times to retry if could not connect to server
 ServerRetries	10
-
-# Warn on missing columns? (Useful to diagnose missing data)
-WarnMissingCol	1
 
 # --------------------------
 # Treatment of area searches
@@ -118,7 +115,7 @@ UseStarsWithNoDist	1
 MaxDistError	0.999
 # If err>MaxDistError or no distance estimate but UseStarsWithNoDist>0
 # then use this default distance [in pc]
-DefaultDist	8000.
+DefaultDist	10000.
 
 # --------------------------
 # Astrometry error treatment
@@ -164,18 +161,12 @@ AncSigmaLimit	3
 #                6 = don't run main loop, use existing fits and just re-make final plots only
 UsePreviousRun	0
 
-# Output separator (compatable with TSV [\t], CSV [,] and pipe [|], but not space-separated)
-OutputSeparator	\t
-
 # Command arguments file - used to check previously run source goes to correct file
 CmdArgsFile	../proc/last_cmd.npy
 
 # Master output file
 SaveMasterOutput	1
 MasterOutputFile	../output/output.dat
-
-# Include masked values in master output?
-OutputMasked	0
 
 # Area searches: maximum number of objects to save individual files
 MaxIndividualSaves	999
@@ -231,7 +222,7 @@ PlotSEDs	1
 ShowAstrometryInset	0
 PlotDir	../output/png/
 # Limit lower limit in flux to this factor fainter than maximum
-MaxSEDPlotFluxRange	1.e5
+MaxSEDPlotFluxRange	1.e4
 
 # Output plot controls for pre-fitting area searches
 MakeAreaPlots	1
@@ -248,12 +239,6 @@ PMPlotFile	../output/pm.png
 PMPlotClipping	99
 MakeMatchSkyPlot	1
 MatchSkyPlotFile	../output/matchsky.png
-
-# Fix SED plotting boundaries [microns, Jy] - use zero for default
-PlotLambdaMin	0.1
-PlotLambdaMax	200
-PlotFluxMin	0
-PlotFluxMax	0
 
 # Output plot controls for post-fitting area searches
 MakeHRDPlot	1
@@ -286,7 +271,7 @@ MaxSeqOutliers	5
 # Minimum number of points in SED to try outlier rejection
 MinOutliers	5
 # Maximum fraction of outliers in SED to try outlier rejection
-MaxFracOutliers	0.5
+MaxFracOutliers 0.5
 # Minimum factor to classify outliers (e.g. "2" tests points <0.5 or >2 times the model flux)
 # (only if improvement is better than OutlierChiSqMin)
 OutlierTolerance	1.25
@@ -380,17 +365,6 @@ UseMSMass	1
 # (uses [Fe/H] = -tan(z[kpc], [alpha/Fe] = -0.2 [Fe/H])
 # (based on approximate fit to SDSS-II 2008ApJ...684..287I)
 FeHfromZ	1
-
-# Informed priors on temperature
-# Applies an informed prior on temperature between PriorTMin and PriorTMax
-# The cut-offs can be softened by using an error function of characteristic width PriorTM??Soft
-UseInformedPriors	1
-PriorTMax	6000.
-PriorTMaxSoft	1000.
-PriorTMin	1000.
-PriorTMinSoft	1000.
-# Use ancillary data labelled Tspec as an informed prior?
-UsePriorsOnTspec	1
 
 # ---------------------
 # Extinction parameters

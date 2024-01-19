@@ -176,9 +176,6 @@ CmdArgsFile	../proc/last_cmd.npy
 SaveMasterOutput	1
 MasterOutputFile	../output/output.dat
 
-# Include masked values in master output?
-OutputMasked	0
-
 # Area searches: maximum number of objects to save individual files
 MaxIndividualSaves	999
 
@@ -250,12 +247,6 @@ PMPlotFile	../output/pm.png
 PMPlotClipping	99
 MakeMatchSkyPlot	1
 MatchSkyPlotFile	../output/matchsky.png
-
-# Fix SED plotting boundaries [microns, Jy] - use zero for default
-PlotLambdaMin	0.1
-PlotLambdaMax	200.
-PlotFluxMin	0
-PlotFluxMax	0
 
 # Output plot controls for post-fitting area searches
 MakeHRDPlot	1
@@ -332,7 +323,7 @@ RecomputeModelGrid	0
 # Restrict models to those between these temperatures, log(g), [Fe/H] and [alpha/Fe]
 # This can improve speed
 #ModelTeffLo	1899.
-#ModelTeffHi	3001.
+#ModelTeffHi	5001.
 #ModelLoggLo	-9.99
 #ModelLoggHi	3.01
 #ModelFeHLo	-0.51
@@ -398,28 +389,9 @@ UsePriorsOnTspec	0
 # Extinction parameters
 # ---------------------
 
+# For the moment, de-extinction is calculated on a point wavelength (i.e. not colour-corrected)
 DefaultEBV	0.0
 DefaultRV	3.1
-
-# Fit E(B-V) as well as temperature [EXPERIMENTAL]
-# Requires ExtCorrDetail>=3 and proctype="simple"
-FitEBV	0
-# If set to 0, this flag stops outlier fitting when FitEBV>0
-RejectOutliersDuringEBVFit	0
-
-# Extinction correction type (higher number is slower)
-# 0 = use central wavelength of filter - for very low extinction sources and red filters only
-# 1 = use convolved filter function - ok if first guess of temperature is close
-# 2 = as 1, but updated during outlier testing
-# 3 = as 2, but updated as temperature is refined
-ExtCorrDetail	3
-# Deredden tolerance (low values run very slowly)
-# When ExtCorrDetail>0, only deredden when the dereddening differs from the tested
-# effective temperature / E(B-V) is more than this number of Kelvin/mag
-# Settings are for high- and low-temperature regimes, bounded by TDeredBound
-HiTDeredTol	3000
-LoTDeredTol	300
-TDeredBound	3500
 
 # Extinction map
 # None = use DefaultEBV
@@ -429,18 +401,3 @@ ExtMap	GTomo
 
 # Maximum angular distance allowed before extracting new extinction line-of-sight (degrees)
 ExtMaxAngle	0.05
-
-# Generate Teff vs. E(B-V) grid
-# Requires ExtCorrDetail>=3 and proctype="simple"
-# Takes ~1-2 hour for a 101x151 grid
-TeffEBVGrid	0
-TeffEBVGridDir	../output/ebvdata/
-# Grid type (linear/logarithmic), ranges and number of points
-TeffGridType	logarithmic
-TeffGridMin	2000
-TeffGridMax	20000
-TeffGridPoints	101
-EBVGridType	linear
-EBVGridMin	0
-EBVGridMax	3
-EBVGridPoints	151

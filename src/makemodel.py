@@ -20,9 +20,6 @@ from pandas import read_csv                 # Much, much faster than Numpy.loadt
 
 import pyssed                               # Import routines from main PySSED file
 
-from dust_extinction.parameter_averages import F99   # Adopted dereddening law
-import astropy.units as u                   # Required for astropy/astroquery/dust_extinction interfacing
-
 # -----------------------------------------------------------------------------
 def makemodel(model,setupfile):
     # Main routine
@@ -37,9 +34,6 @@ def makemodel(model,setupfile):
     global verbosity        # Output level of chatter
     verbosity=int(pyssedsetupdata[pyssedsetupdata[:,0]=="verbosity",1])
     if (verbosity>=30):
-        print ("Running makemodel version 20231115")
-
-    if (verbosity>=30):
         print ("Setup file loaded.")
 
     if (verbosity>=30):
@@ -52,21 +46,14 @@ def makemodel(model,setupfile):
     ls=(listdir("../models/"+model))
     files=[f for f in ls if ".dat" in f]
 
-    # Set Av trials
-    ext = F99(Rv=3.1) # Adopt standard Fitzpatrick 1999 reddening law
-    Avs = np.array([0.1, 3.1, 10., 31.])
-    Avnames = np.array(["lo","med","hi","vhi"])
-
-    # Set up model flux and A_lambda arrays
+    # Set up model flux array
     nmodels=len(files)
     modelflux=np.zeros((nmodels,len(filtdata['svoname'])+5))
-    alambda=np.zeros((len(Avs),nmodels,len(filtdata['svoname'])+5))
 
-    # Add headers to files
+    # Add headers to file
+# Re-introduce these once complete
     headers=np.append(['#teff','logg','metal','alpha','lum'],filtdata['svoname'],axis=0)
     np.savetxt("model-"+model+".dat", np.expand_dims(headers,1), fmt='%s', delimiter=' ', newline=' ')
-    for k in np.arange(len(Avs)):
-        np.savetxt("alambda-"+model+"-"+Avnames[k]+".dat", np.expand_dims(headers,1), fmt='%s', delimiter=' ', newline=' ')    
 
     # Extract filter data
     wavelengths=[]
@@ -105,16 +92,16 @@ def makemodel(model,setupfile):
         try:
             time=datetime.now()
             if (j>0):
-                avt=((time-time0).seconds+(time-time0).microseconds/1000000.)/j
+                av=((time-time0).seconds+(time-time0).microseconds/1000000.)/j
                 eta=(nmodels-j)*(time-time0)/j+datetime.now()
             else:
-                avt=0.
+                av=0.
                 eta=0.
         except:
             time=1.
-            avt=0.
+            av=0.
             eta=0.
-        print (j+1,"/",nmodels,f,":",float(f[1:6]),float(f[7:12]),float(f[13:18]),float(f[19:24]),":",time,avt,"s, ETA:",eta)
+        print (j+1,"/",nmodels,f,":",float(f[1:6]),float(f[7:12]),float(f[13:18]),float(f[19:24]),":",time,av,"s, ETA:",eta)
         modelpath="../models/"+model+"/"+f
 #        modeltable=np.loadtxt(modelpath,dtype=float,delimiter=" ")
         modeltable=read_csv(modelpath,dtype=float,delimiter=" ").values
@@ -172,34 +159,10 @@ def makemodel(model,setupfile):
                     filtinterp=cs(bmodelwave)
                     filtinterp[filtinterp<0]=0
                     filtinterp/=np.sum(filtinterp)
-                    avwave=np.sum(bmodelwave*filtinterp) # Average wavelength
                     # Convolve filter transmission with model
-                    modelenergy=bmodelflux*filtinterp
-                    modelphotons=modelenergy*bmodelwave/avwave
-                    modelflux[j,i+5]=np.sum(modelphotons) # assumes photon counting detector
-                    alambda[k,j,0:4]=modelflux[j,0:4]
-                    try:
-                        unred = np.sum(modelphotons)
-                        for k in np.arange(len(Avs)):
-                            red = np.sum(modelphotons*ext.extinguish(bmodelwave*u.AA, Av=Avs[k]))
-                            alambda[k,j,i+5]=-2.5*np.log10(red/unred)/Avs[k]
-                    except Exception as e:
-                        if (avwave<10000.):
-                            alambda[k,j,i+5]=0.0
-                        elif ((avwave>10000.) & (avwave<100000.)):
-                            alambda[k,j,i+5]=0.1 # constant Alambda/Av=0.1 up to 10 microns
-                        else:
-                            alambda[k,j,i+5]=0.1/(avwave/100000.) # decrease Alambda/Av beyond 10 microns
+                    modelflux[j,i+5]=np.sum(bmodelflux*filtinterp)
                 else:
                     modelflux[j,i+5]=-1.
-                    for k in np.arange(len(Avs)):
-                        alambda[k,j,0:4]=modelflux[j,0:4]
-                        if (avwave<10000.):
-                            alambda[k,j,i+5]=0.0
-                        elif ((avwave>10000.) & (avwave<100000.)):
-                            alambda[k,j,i+5]=0.1 # constant Alambda/Av=0.1 up to 10 microns
-                        else:
-                            alambda[k,j,i+5]=0.1/(avwave/100000.) # decrease Alambda/Av beyond 10 microns
 #                print ("Filter",filtdata['svoname'][i])
 #                print ("Binning factor",binfactor)
 #                print ("Number of filter points",len(wavelengths[i]))
@@ -224,10 +187,6 @@ def makemodel(model,setupfile):
         with open("model-"+model+".dat", "ab") as f:
             f.write(b"\n")
             np.savetxt(f,modelflux[j,:],fmt='%.6e',delimiter=' ',newline=' ')
-        for k in np.arange(len(Avs)):
-            with open("alambda-"+model+"-"+Avnames[k]+".dat", "ab") as f:
-                f.write(b"\n")
-                np.savetxt(f,alambda[k,j,:], fmt='%.6e', delimiter=' ', newline=' ')    
 
 # -----------------------------------------------------------------------------
 # Copied from pyssed.py
